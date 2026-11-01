@@ -10,5 +10,11 @@ services:
       - "54329:5432"
     volumes:
       - sendraa-pg:/var/lib/postgresql/data
+    # Lets `compose up --wait` return only once Postgres accepts connections.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sendraa -d sendraa"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
 volumes:
   sendraa-pg:

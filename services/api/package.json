@@ -11,7 +11,7 @@
     "mail:e2e": "tsx --env-file=.env scripts/mail-e2e.ts",
     "oauth:create": "tsx --env-file=.env scripts/create-oauth-client.ts",
     "tunnel": "sh -c 'set -a; . ./.env; set +a; TUNNEL_TOKEN=\"$CLOUDFLARE_TUNNEL_TOKEN\" exec cloudflared tunnel --no-autoupdate run'",
-    "db:up": "docker compose -f docker-compose.dev.yml up -d",
+    "db:up": "sh scripts/db-up.sh",
     "db:down": "docker compose -f docker-compose.dev.yml down",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

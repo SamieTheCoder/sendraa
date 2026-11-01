@@ -20,16 +20,10 @@ cleanup() {
 }
 trap cleanup INT TERM EXIT
 
-# 1. Docker and Postgres
-if ! docker info >/dev/null 2>&1; then
-  echo "Starting Docker Desktop…"
-  open -a Docker
-  for i in {1..60}; do docker info >/dev/null 2>&1 && break; sleep 2; done
-  docker info >/dev/null 2>&1 || { echo "Docker did not start."; exit 1; }
-fi
-(cd "$API" && pnpm -s db:up >/dev/null)
+# 1. Docker and Postgres (db:up opens Docker Desktop if needed and waits until Postgres is healthy)
+(cd "$API" && pnpm -s db:up)
 echo "Postgres up."
-for i in {1..20}; do (cd "$API" && pnpm -s migrate >"$LOGS/migrate.log" 2>&1) && break; sleep 2; done
+(cd "$API" && pnpm -s migrate >"$LOGS/migrate.log" 2>&1) || { echo "Migrations failed, see $LOGS/migrate.log"; exit 1; }
 echo "Migrations applied."
 
 # 2. Tunnel and API (logs in .dev-logs/)
