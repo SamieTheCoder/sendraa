@@ -13,8 +13,12 @@
 /** OIDC protocol scopes. `offline_access` is what yields a refresh token. */
 export const PROTOCOL_SCOPES = ['openid', 'offline_access'] as const;
 
-/** Identity claims for the Sendraa account: the admin's email and name. */
-export const IDENTITY_SCOPES = ['email', 'profile'] as const;
+/**
+ * Who the admin is. Cloudflare's OIDC returns only `sub` and does not know the
+ * `email` or `profile` scopes (its consent screen rejects them), so the email
+ * and name come from GET /user, which needs `user-details.read`.
+ */
+export const IDENTITY_SCOPES = ['user-details.read'] as const;
 
 /**
  * Scopes provisioning cannot work without. These are marked required on the

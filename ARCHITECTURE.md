@@ -153,11 +153,13 @@ app: tap "Continue with Cloudflare"
      GET https://dash.cloudflare.com/oauth2/auth
        ?client_id=…&response_type=code&code_challenge=…(S256)
        &redirect_uri=<BETTER_AUTH_URL>/api/auth/callback/cloudflare
-       &scope=openid offline_access email profile <resource scopes>&state=…
+       &scope=openid offline_access user-details.read <resource scopes>&state=…
   → user consents, selects which CF account(s) to expose
   → CF redirects to <BETTER_AUTH_URL>/api/auth/callback/cloudflare
   → api exchanges code at /oauth2/token (client_secret_basic + PKCE verifier)
-  → api calls /oauth2/userinfo → identity; creates user on first sign-in
+  → api calls GET /user (scope user-details.read) → email + name; creates user on first sign-in
+    (Cloudflare userinfo returns only `sub`, and its consent screen rejects the `email`
+     and `profile` scopes, so the OIDC identity scopes are not requested)
   → tokens stored in the Better Auth "account" row, encrypted (encryptOAuthTokens)
   → deep-link back to sendraa:// with the session; stored in the Keychain
 ```

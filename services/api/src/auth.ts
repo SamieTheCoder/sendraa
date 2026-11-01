@@ -3,7 +3,7 @@ import { betterAuth } from 'better-auth';
 import { APIError, createAuthMiddleware } from 'better-auth/api';
 import { genericOAuth } from 'better-auth/plugins';
 
-import { CF_OAUTH, onboardingScopes } from '@sendraa/cloudflare';
+import { CF_OAUTH, CloudflareApi, onboardingScopes } from '@sendraa/cloudflare';
 
 import { pool } from './db.js';
 import { cloudflareConfigured, devAdminSignup, env, isDev } from './env.js';
@@ -91,11 +91,16 @@ export const auth = betterAuth({
                 // Matches token_endpoint_auth_method on the client (scripts/create-oauth-client.ts).
                 tokenEndpointAuth: { method: 'client_secret_basic' },
                 pkce: true,
-                // Cloudflare accounts have a verified email; a name is not guaranteed.
-                mapProfileToUser: (profile) => ({
-                  name: typeof profile.name === 'string' && profile.name ? profile.name : String(profile.email ?? '').split('@')[0],
-                  emailVerified: true,
-                }),
+                // Cloudflare's userinfo only has `sub`. Identity comes from the
+                // Cloudflare API instead, with the access token just issued.
+                getUserInfo: async (tokens) => {
+                  if (!tokens.accessToken) return null;
+                  const cf = await new CloudflareApi(tokens.accessToken).getUser();
+                  const name = [cf.first_name, cf.last_name].filter(Boolean).join(' ').trim();
+                  return { id: cf.id, sub: cf.id, email: cf.email.toLowerCase(), name: name || cf.email.split('@')[0]!, emailVerified: true };
+                },
+                accountSubject: ({ profile }) => String(profile.id ?? profile.sub ?? ''),
+                mapProfileToUser: (profile) => ({ emailVerified: true, name: String(profile.name ?? '') }),
               },
             ],
           }),

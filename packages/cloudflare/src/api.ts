@@ -80,6 +80,14 @@ export class CloudflareApi {
     return z.array(accountSchema).parse(await this.get('/accounts'));
   }
 
+  /** The signed-in Cloudflare user. Needs `user-details.read`. */
+  async getUser(): Promise<{ id: string; email: string; first_name?: string | null; last_name?: string | null }> {
+    return z
+      .object({ id: z.string(), email: z.string(), first_name: z.string().nullish(), last_name: z.string().nullish() })
+      .loose()
+      .parse(await this.get('/user'));
+  }
+
   /** Zones the token can see. Optionally narrowed to one account. */
   async listZones(accountId?: string): Promise<CloudflareZone[]> {
     const path = accountId ? `/zones?account.id=${enc(accountId)}&per_page=50` : '/zones?per_page=50';
