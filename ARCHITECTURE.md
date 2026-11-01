@@ -143,26 +143,51 @@ sendraa/
 
 ### F1 — Sign in with Cloudflare
 
+Implemented with **Better Auth** (`genericOAuth`, provider id `cloudflare`) rather than
+Auth.js, whose maintainers now point to Better Auth and which has first-class Expo
+support. The first Cloudflare sign-in *is* sign-up: it creates the Sendraa user.
+
 ```
 app: tap "Continue with Cloudflare"
-  → open system browser (expo-web-browser)
+  → authClient.signIn.social({ provider: 'cloudflare' })   (opens system browser)
      GET https://dash.cloudflare.com/oauth2/auth
-       ?client_id=…&response_type=code&redirect_uri=https://api.sendraa.app/oauth/cf/callback
-       &scope=openid offline_access <resource scopes>&state=…
+       ?client_id=…&response_type=code&code_challenge=…(S256)
+       &redirect_uri=<BETTER_AUTH_URL>/api/auth/callback/cloudflare
+       &scope=openid offline_access email profile <resource scopes>&state=…
   → user consents, selects which CF account(s) to expose
-  → CF redirects to api/oauth/cf/callback?code=…&state=…
-  → api exchanges code at /oauth2/token using client_secret   (confidential client)
-  → api calls /oauth2/userinfo → identity
-  → upsert users + cf_accounts; encrypt refresh_token (AES-256-GCM)
-  → issue Sendraa session JWT
-  → deep-link back: sendraa://auth?session=…
+  → CF redirects to <BETTER_AUTH_URL>/api/auth/callback/cloudflare
+  → api exchanges code at /oauth2/token (client_secret_basic + PKCE verifier)
+  → api calls /oauth2/userinfo → identity; creates user on first sign-in
+  → tokens stored in the Better Auth "account" row, encrypted (encryptOAuthTokens)
+  → deep-link back to sendraa:// with the session; stored in the Keychain
 ```
+
+The app must call the API on **the same host** as `BETTER_AUTH_URL`, because the OAuth
+state cookie is set on that host. In development a Cloudflare Tunnel gives the local API
+a stable HTTPS name (`api-dev.sendraa.tech` → `localhost:8787`); Cloudflare only
+redirects to HTTPS URLs registered on the client.
+
+The OAuth client is registered by `services/api/scripts/create-oauth-client.ts`
+(`pnpm oauth:create`). Creating clients needs an API token with **OAuth Client Write**;
+no OAuth scope covers that endpoint, so it cannot be done through an OAuth session.
+The client stays **private** (only members of the owning account can authorise it)
+until the platform domain is final, because going public is permanent.
 
 The refresh token never reaches the device. The platform needs it for background
 provisioning, DNS re-checks and fleet upgrades while the user is away.
 
 Failure case to handle explicitly: if no account is selectable, an admin has
 disabled OAuth app access. Show that, don't show a generic error.
+
+#### Who signs in how
+
+| Person | First time | After that |
+|---|---|---|
+| Admin (owns domain + CF account) | Continue with Cloudflare → account created → onboarding | Continue with Cloudflare |
+| Team member | Opens invite link → sets a password | Email + password |
+| Developer, local only | `ALLOW_DEV_ADMIN_SIGNUP=true` offers a password admin | Email + password |
+
+Nobody can create a password account without an invite outside local development.
 
 ### F2 — Connect a domain
 
@@ -173,7 +198,8 @@ disabled OAuth app access. Show that, don't show a generic error.
      MX    @  route1/2/3.mx.cloudflare.net   (Email Routing)
      TXT   @  "v=spf1 include:_spf.mx.cloudflare.net ~all"
      TXT   _dmarc  "v=DMARC1; p=none; rua=…"
-4. enable Email Routing on the zone
+4. enable Email Routing on the zone   POST /zones/:id/email/routing/dns
+                                      (needs zone-settings.write, a required scope)
 5. verifier polls until records resolve → domains.verified_at
 ```
 
@@ -516,6 +542,19 @@ in the Worker.
 | **P5** | EAS submission, billing, managed sending, Gmail OAuth | business works |
 
 P2 is the milestone that de-risks everything. Nothing after it is novel.
+
+### Status (November 2026)
+
+| Piece | State |
+|---|---|
+| Control-plane API: Better Auth, Google-style IAM, invites, audit | Done, smoke test 31/31 |
+| Mobile: sign-in, onboarding, invites, People and access | Done |
+| Mobile: Gmail-style mail UI | Done, on sample data |
+| Brand: Telegram scheme, Strip mark, app icon (light/dark/tinted), splash | Done |
+| Dev HTTPS endpoint via Cloudflare Tunnel `sendraa-dev-api` | Done |
+| Cloudflare OAuth client | Script ready; needs a token with OAuth Client Write |
+| `workers/sendraa-mail` ingest + JSON API | Done, verified locally under `wrangler dev` |
+| Provisioner (F2/F3), sending (F6/F7), push (F9) | Next |
 
 ---
 

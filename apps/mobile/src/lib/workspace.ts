@@ -37,7 +37,8 @@ export async function loadMe(userId: string) {
 }
 
 export function resetMe() {
-  set({ status: 'idle' });
+  // A fresh object would change the snapshot and re-run useMe's effect forever.
+  if (state.status !== 'idle') set({ status: 'idle' });
 }
 
 export function setActiveWorkspace(id: string) {

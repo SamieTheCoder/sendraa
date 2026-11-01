@@ -1,4 +1,5 @@
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View, useColorScheme } from 'react-native';
@@ -21,10 +22,12 @@ export default function RootLayout() {
 
   const { data: session, isPending } = authClient.useSession();
   const me = useMe(session?.user.id);
+  // A font failure falls back to the system face rather than blocking launch.
+  const [fontsLoaded, fontError] = useFonts({ LeagueGothic: require('../../assets/fonts/LeagueGothic.ttf') });
   const signedIn = Boolean(session);
   const ready = me.status === 'ready';
   const hasWorkspace = ready && me.me.workspaces.length > 0;
-  const deciding = isPending || (signedIn && (me.status === 'idle' || me.status === 'loading'));
+  const deciding = isPending || (!fontsLoaded && !fontError) || (signedIn && (me.status === 'idle' || me.status === 'loading'));
 
   useEffect(() => {
     if (!deciding) void SplashScreen.hideAsync();

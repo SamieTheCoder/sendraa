@@ -60,5 +60,5 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   text: { flex: 1, color: '#F1F5E8', fontSize: 15 },
-  action: { color: Brand.lime, fontSize: 15, fontWeight: '700' },
+  action: { color: Brand.yellow, fontSize: 15, fontWeight: '700' },
 });

@@ -2,20 +2,22 @@ import { Color } from 'expo-router';
 import { DynamicColorIOS, Platform, useColorScheme, type ColorValue } from 'react-native';
 
 /**
- * Midnight lime, the chosen Sendraa scheme.
+ * Telegram, the chosen Sendraa scheme (brand/sendraa-brand.html).
  *
- * The app follows Apple's design, so brand colour appears in three places only:
- * the tint (buttons, links, selected tab), the app icon, and the leading swipe
- * action. Everything else uses system colours so light, dark and increased
- * contrast modes work automatically.
+ * The app follows Apple's design, so brand colour appears in a few places only:
+ * the tint (buttons, links, selected tab), the app icon, the sign-in mark and
+ * the one primary button per screen. Everything else uses system colours so
+ * light, dark and increased contrast modes work automatically.
  */
 export const Brand = {
-  lime: '#C6F432',
-  ink: '#12160A',
-  /** Tint in light mode. Lime itself fails contrast on white, so light mode uses dark olive. */
-  tintLight: '#4D6B00',
+  /** Telegraph yellow. A fill only, never text on white. */
+  yellow: '#F5C400',
+  /** Text and marks placed on the yellow fill. */
+  ink: '#16130E',
+  /** Tint in light mode. Yellow fails contrast on white, so light mode uses deep amber (7.0:1). */
+  tintLight: '#7A5400',
   /** Tint in dark mode. */
-  tintDark: '#C6F432',
+  tintDark: '#F5C400',
 } as const;
 
 export const tint: ColorValue =
@@ -37,7 +39,7 @@ type Palette = {
   orange: ColorValue;
   yellow: ColorValue;
   blue: ColorValue;
-  /** Text and icons placed on the lime brand fill. */
+  /** Text and icons placed on the yellow brand fill. */
   onBrand: string;
   brand: string;
 };
@@ -57,43 +59,44 @@ const iosPalette: Palette = {
   yellow: Color.ios.systemYellow,
   blue: Color.ios.systemBlue,
   onBrand: Brand.ink,
-  brand: Brand.lime,
+  brand: Brand.yellow,
 };
 
+// Android has no system palette to defer to, so these come from the Telegram neutral ramp.
 const lightPalette: Palette = {
   tint: Brand.tintLight,
-  label: '#111111',
-  secondaryLabel: '#5C6250',
-  tertiaryLabel: '#8A8F82',
+  label: '#16130E',
+  secondaryLabel: '#625A4C',
+  tertiaryLabel: '#847C6D',
   background: '#FFFFFF',
-  groupedBackground: '#F2F4EE',
+  groupedBackground: '#F3F2EE',
   cell: '#FFFFFF',
-  separator: '#DEE2D6',
-  fill: '#ECEEE7',
+  separator: '#E1DED6',
+  fill: '#ECEAE4',
   red: '#C62828',
   orange: '#E65100',
   yellow: '#F9A825',
   blue: '#1565C0',
   onBrand: Brand.ink,
-  brand: Brand.lime,
+  brand: Brand.yellow,
 };
 
 const darkPalette: Palette = {
   tint: Brand.tintDark,
-  label: '#F1F5E8',
-  secondaryLabel: '#A2AC90',
-  tertiaryLabel: '#737A66',
-  background: '#0D1008',
-  groupedBackground: '#0D1008',
-  cell: '#171C10',
-  separator: '#2A3220',
-  fill: '#222A17',
+  label: '#F3F2EE',
+  secondaryLabel: '#A99D85',
+  tertiaryLabel: '#847C6D',
+  background: '#16130E',
+  groupedBackground: '#16130E',
+  cell: '#221E17',
+  separator: '#3A3328',
+  fill: '#2B2620',
   red: '#FF6B6B',
   orange: '#FFA94D',
   yellow: '#FFD43B',
   blue: '#74C0FC',
   onBrand: Brand.ink,
-  brand: Brand.lime,
+  brand: Brand.yellow,
 };
 
 export function useColors(): Palette {
@@ -107,7 +110,7 @@ export function useTintHex(): string {
   return useColorScheme() === 'dark' ? Brand.tintDark : Brand.tintLight;
 }
 
-const AVATAR_COLORS = ['#4D6B00', '#0F6E68', '#7A1E3A', '#1E3A8A', '#A8470B', '#4A3FD8', '#6B5752', '#1F4D3A'];
+const AVATAR_COLORS = ['#7A5400', '#0F6E68', '#7A1E3A', '#1E3A8A', '#A8470B', '#4A3FD8', '#6B5752', '#1F4D3A'];
 
 /** Stable colour for a sender avatar, derived from their address. */
 export function avatarColor(address: string): string {

@@ -18,6 +18,7 @@ export {
 } from './api.js';
 
 export {
+  IDENTITY_SCOPES,
   OPTIONAL_SCOPES,
   PROTOCOL_SCOPES,
   REQUIRED_SCOPES,

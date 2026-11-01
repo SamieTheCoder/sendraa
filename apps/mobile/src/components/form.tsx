@@ -25,13 +25,13 @@ type ButtonProps = {
   onPress: () => void;
   loading?: boolean;
   disabled?: boolean;
-  /** "brand" is the lime fill, used once per screen for the main action. */
+  /** "brand" is the yellow fill, used once per screen for the main action. */
   variant?: 'brand' | 'filled' | 'plain';
 };
 
 export function Button({ title, onPress, loading, disabled, variant = 'filled' }: ButtonProps) {
   const c = useColors();
-  const bg = variant === 'brand' ? Brand.lime : variant === 'filled' ? c.tint : 'transparent';
+  const bg = variant === 'brand' ? Brand.yellow : variant === 'filled' ? c.tint : 'transparent';
   const fg = variant === 'brand' ? Brand.ink : variant === 'filled' ? c.background : c.tint;
   return (
     <Pressable

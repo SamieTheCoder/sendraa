@@ -76,7 +76,7 @@ export function SwitchRow({ title, subtitle, value, onValueChange }: { title: st
         <Switch
           value={value}
           onValueChange={onValueChange}
-          trackColor={{ true: tint === Brand.tintDark ? Brand.lime : Brand.tintLight }}
+          trackColor={{ true: tint === Brand.tintDark ? Brand.yellow : Brand.tintLight }}
           accessibilityLabel={title}
         />
       }

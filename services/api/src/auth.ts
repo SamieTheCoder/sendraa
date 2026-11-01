@@ -24,7 +24,12 @@ export const auth = betterAuth({
   baseURL: env.BETTER_AUTH_URL,
   secret: env.BETTER_AUTH_SECRET,
   database: pool,
-  trustedOrigins: [`${env.APP_SCHEME}://`, `${env.APP_SCHEME}://*`, ...(isDev ? ['exp://', 'exp://**'] : [])],
+  trustedOrigins: [
+    `${env.APP_SCHEME}://`,
+    `${env.APP_SCHEME}://*`,
+    // Local tools (smoke test, curl) reach the API directly, not through the tunnel.
+    ...(isDev ? ['exp://', 'exp://**', `http://localhost:${env.PORT}`] : []),
+  ],
   emailAndPassword: {
     enabled: true,
     minPasswordLength: 10,
@@ -73,7 +78,9 @@ export const auth = betterAuth({
                 clientId: env.CLOUDFLARE_CLIENT_ID!,
                 clientSecret: env.CLOUDFLARE_CLIENT_SECRET!,
                 discoveryUrl: 'https://dash.cloudflare.com/.well-known/openid-configuration',
-                scopes: [...onboardingScopes(), 'email', 'profile'],
+                scopes: [...onboardingScopes()],
+                // Matches token_endpoint_auth_method on the client (scripts/create-oauth-client.ts).
+                tokenEndpointAuth: { method: 'client_secret_basic' },
                 pkce: true,
               },
             ],

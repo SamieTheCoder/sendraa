@@ -8,6 +8,8 @@
     "start": "tsx --env-file=.env src/index.ts",
     "migrate": "tsx --env-file=.env src/migrate.ts",
     "smoke": "tsx --env-file=.env scripts/smoke.ts",
+    "oauth:create": "tsx --env-file=.env scripts/create-oauth-client.ts",
+    "tunnel": "sh -c 'set -a; . ./.env; set +a; TUNNEL_TOKEN=\"$CLOUDFLARE_TUNNEL_TOKEN\" exec cloudflared tunnel --no-autoupdate run'",
     "db:up": "docker compose -f docker-compose.dev.yml up -d",
     "db:down": "docker compose -f docker-compose.dev.yml down",
     "typecheck": "tsc -p tsconfig.json --noEmit"

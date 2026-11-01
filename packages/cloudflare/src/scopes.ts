@@ -13,6 +13,9 @@
 /** OIDC protocol scopes. `offline_access` is what yields a refresh token. */
 export const PROTOCOL_SCOPES = ['openid', 'offline_access'] as const;
 
+/** Identity claims for the Sendraa account: the admin's email and name. */
+export const IDENTITY_SCOPES = ['email', 'profile'] as const;
+
 /**
  * Scopes provisioning cannot work without. These are marked required on the
  * OAuth client, so the consent screen does not allow declining them.
@@ -20,6 +23,11 @@ export const PROTOCOL_SCOPES = ['openid', 'offline_access'] as const;
 export const REQUIRED_SCOPES = [
   // Discover which zones the tenant can use
   'zone.read',
+
+  // Turn on Email Routing for the zone (POST /zones/:id/email/routing/dns)
+  // and read its status. Cloudflare files this under Zone Settings.
+  'zone-settings.read',
+  'zone-settings.write',
 
   // Write MX, SPF, DMARC and the ownership-verification TXT record
   'dns.read',
@@ -69,7 +77,7 @@ export const OPTIONAL_SCOPES = [
 ] as const;
 
 export function onboardingScopes(): readonly string[] {
-  return [...PROTOCOL_SCOPES, ...REQUIRED_SCOPES, ...OPTIONAL_SCOPES];
+  return [...PROTOCOL_SCOPES, ...IDENTITY_SCOPES, ...REQUIRED_SCOPES, ...OPTIONAL_SCOPES];
 }
 
 /** Scope set for the OAuth client registration payload. */
