@@ -209,6 +209,27 @@ the zone-automation step is simply skipped.
 ### F3 — Provision tenant resources
 
 Idempotent, resumable, and recorded step-by-step so a partial failure can retry.
+Implemented in `services/api/src/provision.ts`; the app starts it with
+`POST /v1/tenants/:tid/setup { zoneId }` and polls `GET /v1/tenants/:tid/setup`.
+
+| Step | Cloudflare call (all verified against the live API) |
+|---|---|
+| database | find or `POST /accounts/:id/d1/database` `sendraa-mail` |
+| schema | `POST …/d1/database/:db/query` with each `workers/sendraa-mail/schema/*.sql` (IF NOT EXISTS) |
+| storage | `GET` or `POST /accounts/:id/r2/buckets` `sendraa-mail`; R2-not-enabled gets a specific message |
+| worker | `PUT /accounts/:id/workers/scripts/sendraa-mail` (multipart) with DB, BLOB, TENANT_SECRET, TENANT_ID, PLATFORM_WEBHOOK |
+| worker_url | ensure the account workers.dev subdomain, then `POST …/scripts/sendraa-mail/subdomain` |
+| routing | `POST /zones/:zone/email/routing/dns` unless already on; stops if foreign MX records exist |
+| dmarc | add `_dmarc` TXT `v=DMARC1; p=none` only if none exists |
+| catch_all | `PUT /zones/:zone/email/routing/rules/catch_all` → Worker; existing rules keep working |
+| mailbox | `admin@domain` in Postgres and in the Worker's D1 |
+| check | `GET <worker>/v1/health` with the tenant secret |
+
+The tenant secret is stored AES-256-GCM sealed (`src/crypto.ts`). A new Worker build
+changes `artifact.version`, which makes the worker step run again on the next setup:
+the seed of F8 fleet upgrades. Setup never deletes or overwrites a tenant's records.
+
+Original sketch:
 
 ```
 1. CREATE D1 database        sendraa-mail
@@ -547,16 +568,17 @@ P2 is the milestone that de-risks everything. Nothing after it is novel.
 
 | Piece | State |
 |---|---|
-| Control-plane API: Better Auth, Google-style IAM, invites, audit | Done, smoke test 34/34 |
+| Control-plane API: Better Auth, Google-style IAM, invites, audit | Done, smoke test 38/38 |
 | Mobile: sign-in, onboarding, invites, People and access | Done |
 | Mobile: Gmail-style mail UI | Done, on sample data |
 | Brand: Telegram scheme, Strip mark, app icon (light/dark/tinted), splash | Done |
 | Dev HTTPS endpoint via Cloudflare Tunnel `sendraa-dev-api` | Done |
 | Cloudflare OAuth client | Script ready; needs a token with OAuth Client Write (the MCP's OAuth session cannot create one) |
-| F1 API: `/v1/cloudflare/accounts`, `/v1/cloudflare/zones`, workspace bound to one CF account | Done, smoke test 34/34 |
+| F1 API: `/v1/cloudflare/accounts`, `/v1/cloudflare/zones`, workspace bound to one CF account | Done, smoke test 38/38 |
 | F1 app: onboarding picks the CF account and lists its domains | Done, typechecks; needs the OAuth client to run end to end |
 | `workers/sendraa-mail` ingest + JSON API | Done, verified locally under `wrangler dev` |
-| Provisioner (F2/F3), sending (F6/F7), push (F9) | Next |
+| Provisioner F2/F3: D1, R2, Worker, workers.dev, Email Routing, DMARC, catch-all, admin@ | Built; payloads verified live; full run needs a Cloudflare sign-in |
+| Sending (F6/F7), push (F9), real inbox in the app | Next |
 
 ---
 
@@ -567,8 +589,9 @@ P2 is the milestone that de-risks everything. Nothing after it is novel.
 2. **Outbound port 587/465 confirmed open** on the Oracle box (tested). Port 25
    remains permanently blocked, which rules out a self-hosted MTA but does not
    affect Model A, where all outbound leaves over :443 or :587.
-3. **R2 on free accounts may require a card on file.** Unverified, and it would
-   undercut "free for startups" if true. Check before depending on R2.
+3. **R2 on free accounts may require a card on file.** Bucket creation through the API
+   worked on a free account that already had R2 on; a brand-new account is still
+   unverified. Setup detects "R2 not enabled" and tells the admin exactly what to do.
 4. **Workers Free CPU ceiling.** The 256 KB inline-parse threshold is an estimate
    and needs measuring against real mail.
 5. **Platform domain is a one-way door.** The OAuth client URL cannot change after

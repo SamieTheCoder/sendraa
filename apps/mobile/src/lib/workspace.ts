@@ -2,7 +2,14 @@ import { useEffect, useSyncExternalStore } from 'react';
 
 import { api } from './api';
 
-export type Workspace = { id: string; name: string; roles: string[]; permissions: string[] };
+export type Workspace = {
+  id: string;
+  name: string;
+  roles: string[];
+  permissions: string[];
+  setupStatus: 'not_started' | 'running' | 'ready' | 'failed';
+  linkedToCloudflare: boolean;
+};
 
 export type Me = {
   user: { id: string; email: string; name: string };

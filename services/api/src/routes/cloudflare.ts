@@ -12,7 +12,7 @@ export const cloudflare = new Hono<AppEnv>();
 cloudflare.use('*', requireSession);
 
 cloudflare.get('/cloudflare/accounts', async (c) => {
-  const cf = await cloudflareFor(c.get('session').user.id, c.req.raw.headers);
+  const cf = await cloudflareFor(c.get("session").user.id);
   const accounts = await cf.listAccounts().catch(cloudflareError);
   if (accounts.length === 0) {
     // Consent succeeded but no account was shared. Either the person picked
@@ -29,7 +29,7 @@ cloudflare.get('/cloudflare/accounts', async (c) => {
 cloudflare.get('/cloudflare/zones', async (c) => {
   const accountId = c.req.query('accountId');
   if (accountId !== undefined && !/^[0-9a-f]{32}$/.test(accountId)) throw new IamError(400, 'INVALID_ARGUMENT', 'accountId is not a Cloudflare account id.');
-  const cf = await cloudflareFor(c.get('session').user.id, c.req.raw.headers);
+  const cf = await cloudflareFor(c.get("session").user.id);
   const zones = await cf.listZones(accountId).catch(cloudflareError);
   return c.json({
     zones: zones.map((z) => ({ id: z.id, name: z.name, status: z.status, accountId: z.account?.id ?? null })),

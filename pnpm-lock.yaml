@@ -336,6 +336,9 @@ importers:
       '@sendraa/cloudflare':
         specifier: workspace:*
         version: link:../../packages/cloudflare
+      '@sendraa/mail-worker':
+        specifier: workspace:*
+        version: link:../../workers/sendraa-mail
       better-auth:
         specifier: 1.7.14
         version: 1.7.14(pg@8.23.1)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)

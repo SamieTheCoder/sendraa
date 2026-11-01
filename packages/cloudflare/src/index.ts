@@ -15,6 +15,9 @@ export {
   CloudflareApiError,
   type CloudflareAccount,
   type CloudflareZone,
+  type D1Database,
+  type DnsRecord,
+  type WorkerBinding,
 } from './api.js';
 
 export {

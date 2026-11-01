@@ -27,6 +27,14 @@ export default function SettingsScreen() {
       {workspace ? (
         <Section title="Workspace" footer={me ? `Signed in as ${me.user.email}${me.signedInWithCloudflare ? ' with Cloudflare' : ''}.` : undefined}>
           <Row title={workspace.name} subtitle={workspace.roles.map((r) => ROLE_TITLES[r] ?? r).join(', ') || 'Access to some mailboxes'} />
+          {workspace.linkedToCloudflare && workspace.permissions.includes('domains.list') ? (
+            <Row
+              title="Email setup"
+              value={{ ready: 'Ready', running: 'In progress', failed: 'Needs attention', not_started: 'Not set up' }[workspace.setupStatus]}
+              navigates
+              onPress={() => router.push('/setup')}
+            />
+          ) : null}
           {canManagePeople ? <Row title="People and access" navigates onPress={() => router.push('/people')} /> : null}
         </Section>
       ) : null}

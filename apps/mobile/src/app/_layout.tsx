@@ -74,6 +74,7 @@ export default function RootLayout() {
             />
             <Stack.Screen name="people/index" options={{ title: 'People and access' }} />
             <Stack.Screen name="people/invite" options={{ presentation: 'modal', title: 'Invite someone' }} />
+            <Stack.Screen name="setup" options={{ title: 'Email setup' }} />
           </Stack.Protected>
 
           <Stack.Screen name="index" options={{ headerShown: false }} />

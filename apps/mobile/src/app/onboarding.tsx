@@ -1,4 +1,4 @@
-import { Stack } from 'expo-router';
+import { router, Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
@@ -57,6 +57,8 @@ export default function Onboarding() {
     try {
       await api('/v1/tenants', { method: 'POST', body: { name: name.trim(), cloudflareAccountId: accountId ?? undefined } });
       if (me) await loadMe(me.user.id);
+      // Straight on to building the mail system in that Cloudflare account.
+      if (viaCloudflare) router.replace('/setup');
     } catch (err) {
       fail(err, 'Could not create the workspace.');
     } finally {
@@ -136,7 +138,7 @@ export default function Onboarding() {
                     ))}
                   </View>
                 )}
-                <Text style={[styles.caption, { color: c.tertiaryLabel }]}>You choose which domain gets email in the next step.</Text>
+                <Text style={[styles.caption, { color: c.tertiaryLabel }]}>Next, choose which domain gets email. Sendraa sets it up for you.</Text>
               </>
             ) : null}
           </View>

@@ -105,6 +105,16 @@ async function main() {
   const helloRes = `tenants/${tid}/mailboxes/${box.json.id}`;
   const ceoRes = `tenants/${tid}/mailboxes/${box2.json.id}`;
 
+  console.log('\nsetup');
+  const setup = await owner.call('GET', `/v1/tenants/${tid}/setup`);
+  check('setup lists every step as pending', setup.json?.status === 'not_started' && setup.json?.steps?.length === 10 && setup.json.steps.every((s: { status: string }) => s.status === 'pending'), setup);
+  const noCfSetup = await owner.call('POST', `/v1/tenants/${tid}/setup`, { zoneId: '0'.repeat(32) });
+  check('setup refuses a workspace without a Cloudflare account', noCfSetup.status === 409 && noCfSetup.json?.error?.code === 'NO_CLOUDFLARE_ACCOUNT', noCfSetup);
+  const strangerSetup = await stranger.call('GET', `/v1/tenants/${tid}/setup`);
+  check('outsiders cannot read setup', strangerSetup.status === 401 || strangerSetup.status === 404, strangerSetup);
+  const forged = await stranger.call('POST', '/v1/hooks/mail', { tenantId: tid, event: 'message.received' }, { 'x-sendraa-signature': `t=${Math.floor(Date.now() / 1000)},v1=${'0'.repeat(64)}` });
+  check('mail webhook rejects a bad signature', forged.status === 401, forged);
+
   console.log('\ninvites');
   const inv1 = await owner.call('POST', `/v1/tenants/${tid}/invites`, { email: `mbadmin-${run}@x.example`, role: 'roles/mailboxAdmin' });
   check('owner invites a mailbox admin', inv1.status === 201 && inv1.json.inviteUrl?.startsWith('sendraa://invite/'), inv1);

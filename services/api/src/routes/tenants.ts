@@ -20,6 +20,7 @@ import {
 } from '../iam/policy.js';
 import { PERMISSIONS, ROLES, mailboxResource, tenantResource, type Permission } from '../iam/roles.js';
 import { hashToken, newToken } from '../invites.js';
+import { STEPS, claimSetup, provision } from '../provision.js';
 
 export const tenants = new Hono<AppEnv>();
 tenants.use('*', requireSession);
@@ -38,14 +39,17 @@ function tenantId(raw: string) {
 
 tenants.get('/me', async (c) => {
   const { user } = c.get('session');
-  const memberships = await query<{ id: string; name: string }>(
-    `select t.id, t.name from tenant t join tenant_member m on m.tenant_id = t.id where m.user_id = $1 order by t.created_at`,
+  const memberships = await query<{ id: string; name: string; setup_status: string; cloudflare_account_id: string | null }>(
+    `select t.id, t.name, t.setup_status, t.cloudflare_account_id from tenant t join tenant_member m on m.tenant_id = t.id where m.user_id = $1 order by t.created_at`,
     [user.id],
   );
   const workspaces = await Promise.all(
     memberships.map(async (t) => ({
       id: t.id,
       name: t.name,
+      // ready once the mail system exists in the tenant's Cloudflare account
+      setupStatus: t.setup_status,
+      linkedToCloudflare: Boolean(t.cloudflare_account_id),
       roles: await effectiveRoles(user.id, tenantOf(t.id)),
       permissions: [...(await effectivePermissions(user.id, tenantOf(t.id)))],
     })),
@@ -83,7 +87,7 @@ tenants.post('/tenants', async (c) => {
   let cfAccount: { id: string; name: string } | null = null;
   if (cloudflare) {
     if (!input.cloudflareAccountId) throw new IamError(400, 'INVALID_ARGUMENT', 'Choose the Cloudflare account this workspace runs in.');
-    const cf = await cloudflareFor(user.id, c.req.raw.headers);
+    const cf = await cloudflareFor(user.id);
     const accounts = await cf.listAccounts().catch(cloudflareError);
     cfAccount = accounts.find((a) => a.id === input.cloudflareAccountId) ?? null;
     if (!cfAccount) throw new IamError(404, 'NOT_FOUND', 'That Cloudflare account was not shared with Sendraa.');
@@ -365,6 +369,84 @@ tenants.delete('/tenants/:tid/invites/:iid', async (c) => {
   });
   if (!result) throw new IamError(404, 'NOT_FOUND', 'Invite not found.');
   return c.json({ ok: true });
+});
+
+// ---------------------------------------------------------------------------
+// Setup (F2 + F3): connect a Cloudflare domain and build the mail system
+// ---------------------------------------------------------------------------
+
+tenants.get('/tenants/:tid/setup', async (c) => {
+  const id = tenantId(c.req.param('tid'));
+  await authorize(c.get('session').user.id, 'domains.list', tenantOf(id));
+  const t = await one<{ setup_status: string; setup_error: string | null; worker_url: string | null; worker_version: string | null; cloudflare_account_id: string | null; cloudflare_account_name: string | null }>(
+    'select setup_status, setup_error, worker_url, worker_version, cloudflare_account_id, cloudflare_account_name from tenant where id = $1',
+    [id],
+  );
+  const rows = await query<{ step: string; status: string; error: string | null }>('select step, status, error from provision_step where tenant_id = $1', [id]);
+  const domain = await one<{ name: string; zone_id: string | null; routing_enabled_at: Date | null }>(
+    'select name, zone_id, routing_enabled_at from domain where tenant_id = $1 and zone_id is not null order by created_at limit 1',
+    [id],
+  );
+  return c.json({
+    status: t?.setup_status,
+    error: t?.setup_error,
+    workerUrl: t?.worker_url,
+    workerVersion: t?.worker_version,
+    cloudflareAccount: t?.cloudflare_account_name,
+    cloudflareAccountId: t?.cloudflare_account_id,
+    domain,
+    steps: STEPS.map((s) => {
+      const r = rows.find((x) => x.step === s.id);
+      return { id: s.id, title: s.title, status: r?.status ?? 'pending', error: r?.error ?? null };
+    }),
+  });
+});
+
+tenants.post('/tenants/:tid/setup', async (c) => {
+  const id = tenantId(c.req.param('tid'));
+  const { user } = c.get('session');
+  await authorize(user.id, 'domains.create', tenantOf(id));
+  const input = await body(c, z.object({ zoneId: z.string().regex(/^[0-9a-f]{32}$/).optional() }));
+
+  const t = await one<{ cloudflare_account_id: string | null; cloudflare_user_id: string | null; setup_status: string }>(
+    'select cloudflare_account_id, cloudflare_user_id, setup_status from tenant where id = $1',
+    [id],
+  );
+  if (!t?.cloudflare_account_id || !t.cloudflare_user_id) {
+    throw new IamError(409, 'NO_CLOUDFLARE_ACCOUNT', 'This workspace is not linked to a Cloudflare account, so Sendraa cannot set it up.');
+  }
+
+  // Retry without a zone reuses the domain already chosen.
+  let domain = await one<{ id: string; name: string; zone_id: string }>('select id, name, zone_id from domain where tenant_id = $1 and zone_id is not null order by created_at limit 1', [id]);
+  if (input.zoneId && domain && domain.zone_id !== input.zoneId) {
+    throw new IamError(409, 'DOMAIN_ALREADY_CONNECTED', `${domain.name} is already connected. Additional domains come later.`);
+  }
+  if (!domain) {
+    if (!input.zoneId) throw new IamError(400, 'INVALID_ARGUMENT', 'Choose the domain to set up.');
+    const cf = await cloudflareFor(t.cloudflare_user_id);
+    const zone = (await cf.listZones(t.cloudflare_account_id).catch(cloudflareError)).find((z) => z.id === input.zoneId);
+    if (!zone) throw new IamError(404, 'NOT_FOUND', 'That domain is not in the workspace’s Cloudflare account.');
+    if (zone.status !== 'active') {
+      throw new IamError(409, 'ZONE_NOT_ACTIVE', `${zone.name} is not active in Cloudflare yet (status: ${zone.status}). Point its nameservers at Cloudflare and wait for it to become active.`);
+    }
+    const taken = await one<{ tenant_id: string }>('select tenant_id from domain where name = $1', [zone.name]);
+    if (taken && taken.tenant_id !== id) throw new IamError(409, 'DOMAIN_TAKEN', `${zone.name} is already connected to another workspace.`);
+    domain = await transaction(async (db) => {
+      const d = await one<{ id: string; name: string; zone_id: string }>(
+        `insert into domain (tenant_id, name, zone_id) values ($1, $2, $3)
+         on conflict (name) do update set zone_id = excluded.zone_id returning id, name, zone_id`,
+        [id, zone.name, zone.id],
+        db,
+      );
+      await audit(db, { tenantId: id, actorId: user.id, action: 'domain.connect', metadata: { name: zone.name, zoneId: zone.id } });
+      return d!;
+    });
+  }
+
+  if (!(await claimSetup(id))) return c.json({ status: 'running' }, 202);
+  // Runs in the background; the app polls GET /setup for progress.
+  void provision(id, domain.id, user.id);
+  return c.json({ status: 'running', domain: domain.name }, 202);
 });
 
 // ---------------------------------------------------------------------------
