@@ -1,0 +1,31 @@
+{
+  "name": "@sendraa/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:ingest": "tsx watch src/ingest/index.ts",
+    "dev:api": "tsx watch src/api/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start:ingest": "node dist/ingest/index.js",
+    "start:api": "node dist/api/index.js",
+    "migrate": "tsx src/db/migrate.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.1.5",
+    "hono": "4.13.14",
+    "mailparser": "3.14.1",
+    "pino": "10.4.0",
+    "postgres": "4.0.0",
+    "smtp-server": "3.21.3",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/mailparser": "3.9.0",
+    "@types/node": "26.6.6",
+    "@types/smtp-server": "3.5.10",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3"
+  }
+}
