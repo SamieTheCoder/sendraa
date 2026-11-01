@@ -5,6 +5,7 @@ import { secureHeaders } from 'hono/secure-headers';
 import { auth } from './auth.js';
 import { cloudflareConfigured, devAdminSignup } from './env.js';
 import { IamError } from './iam/policy.js';
+import { cloudflare } from './routes/cloudflare.js';
 import { invites } from './routes/invites.js';
 import { tenants } from './routes/tenants.js';
 
@@ -24,6 +25,7 @@ app.get('/v1/auth/providers', (c) => c.json({ cloudflare: cloudflareConfigured, 
 app.on(['GET', 'POST'], '/api/auth/*', (c) => auth.handler(c.req.raw));
 
 app.route('/v1', invites);
+app.route('/v1', cloudflare);
 app.route('/v1', tenants);
 
 app.onError((err, c) => {

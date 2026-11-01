@@ -547,12 +547,14 @@ P2 is the milestone that de-risks everything. Nothing after it is novel.
 
 | Piece | State |
 |---|---|
-| Control-plane API: Better Auth, Google-style IAM, invites, audit | Done, smoke test 31/31 |
+| Control-plane API: Better Auth, Google-style IAM, invites, audit | Done, smoke test 34/34 |
 | Mobile: sign-in, onboarding, invites, People and access | Done |
 | Mobile: Gmail-style mail UI | Done, on sample data |
 | Brand: Telegram scheme, Strip mark, app icon (light/dark/tinted), splash | Done |
 | Dev HTTPS endpoint via Cloudflare Tunnel `sendraa-dev-api` | Done |
-| Cloudflare OAuth client | Script ready; needs a token with OAuth Client Write |
+| Cloudflare OAuth client | Script ready; needs a token with OAuth Client Write (the MCP's OAuth session cannot create one) |
+| F1 API: `/v1/cloudflare/accounts`, `/v1/cloudflare/zones`, workspace bound to one CF account | Done, smoke test 34/34 |
+| F1 app: onboarding picks the CF account and lists its domains | Done, typechecks; needs the OAuth client to run end to end |
 | `workers/sendraa-mail` ingest + JSON API | Done, verified locally under `wrangler dev` |
 | Provisioner (F2/F3), sending (F6/F7), push (F9) | Next |
 

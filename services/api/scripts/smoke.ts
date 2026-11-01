@@ -80,6 +80,14 @@ async function main() {
   const anon = await stranger.call('GET', '/v1/me');
   check('me without a session is 401', anon.status === 401, anon);
 
+  console.log('\ncloudflare');
+  const noCf = await owner.call('GET', '/v1/cloudflare/accounts');
+  check('password admin cannot read Cloudflare accounts', noCf.status === 403 && noCf.json?.error?.code === 'CLOUDFLARE_REQUIRED', noCf);
+  const badAccount = await owner.call('GET', '/v1/cloudflare/zones?accountId=nope');
+  check('zones rejects a malformed account id', badAccount.status === 400, badAccount);
+  const anonCf = await stranger.call('GET', '/v1/cloudflare/accounts');
+  check('Cloudflare accounts without a session is 401', anonCf.status === 401, anonCf);
+
   console.log('\nworkspace');
   const tenant = await owner.call('POST', '/v1/tenants', { name: 'Smoke Labs' });
   check('owner creates a workspace', tenant.status === 201, tenant);

@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 
 import { audit, one, query, transaction } from '../db.js';
+import { cloudflareError, cloudflareFor } from '../cloudflare.js';
 import { devAdminSignup, env } from '../env.js';
 import { body, requireSession, uuid, type AppEnv } from '../http.js';
 import {
@@ -64,15 +65,39 @@ tenants.get('/me', async (c) => {
 
 tenants.post('/tenants', async (c) => {
   const { user } = c.get('session');
-  const input = await body(c, z.object({ name: z.string().trim().min(1).max(80) }));
+  const input = await body(
+    c,
+    z.object({
+      name: z.string().trim().min(1).max(80),
+      cloudflareAccountId: z.string().regex(/^[0-9a-f]{32}$/).optional(),
+    }),
+  );
 
   const cloudflare = await one('select 1 from account where "userId" = $1 and "providerId" = $2', [user.id, 'cloudflare']);
   if (!cloudflare && !devAdminSignup) {
     throw new IamError(403, 'CLOUDFLARE_REQUIRED', 'Sign in with Cloudflare to create a workspace. The workspace runs in that Cloudflare account.');
   }
 
+  // A Cloudflare admin must say which account the mail runs in, and the
+  // account must be one their consent actually shared.
+  let cfAccount: { id: string; name: string } | null = null;
+  if (cloudflare) {
+    if (!input.cloudflareAccountId) throw new IamError(400, 'INVALID_ARGUMENT', 'Choose the Cloudflare account this workspace runs in.');
+    const cf = await cloudflareFor(user.id, c.req.raw.headers);
+    const accounts = await cf.listAccounts().catch(cloudflareError);
+    cfAccount = accounts.find((a) => a.id === input.cloudflareAccountId) ?? null;
+    if (!cfAccount) throw new IamError(404, 'NOT_FOUND', 'That Cloudflare account was not shared with Sendraa.');
+    const taken = await one('select 1 from tenant where cloudflare_account_id = $1', [cfAccount.id]);
+    if (taken) throw new IamError(409, 'CLOUDFLARE_ACCOUNT_IN_USE', `${cfAccount.name} already has a Sendraa workspace. Ask its owner to invite you.`);
+  }
+
   const tenant = await transaction(async (db) => {
-    const t = await one<{ id: string; name: string }>('insert into tenant (name, created_by) values ($1, $2) returning id, name', [input.name, user.id], db);
+    const t = await one<{ id: string; name: string }>(
+      `insert into tenant (name, created_by, cloudflare_account_id, cloudflare_account_name, cloudflare_user_id)
+       values ($1, $2, $3, $4, $5) returning id, name`,
+      [input.name, user.id, cfAccount?.id ?? null, cfAccount?.name ?? null, cfAccount ? user.id : null],
+      db,
+    );
     await db.query('insert into tenant_member (tenant_id, user_id) values ($1, $2)', [t!.id, user.id]);
     await grant(db, t!.id, tenantResource(t!.id), 'roles/owner', user.id, user.id);
     await audit(db, { tenantId: t!.id, actorId: user.id, action: 'tenant.create', resource: tenantResource(t!.id) });
@@ -85,7 +110,7 @@ tenants.get('/tenants/:tid', async (c) => {
   const id = tenantId(c.req.param('tid'));
   const { user } = c.get('session');
   await authorize(user.id, 'tenant.get', tenantOf(id));
-  return c.json(await one('select id, name, created_at from tenant where id = $1', [id]));
+  return c.json(await one('select id, name, cloudflare_account_id, cloudflare_account_name, created_at from tenant where id = $1', [id]));
 });
 
 // ---------------------------------------------------------------------------

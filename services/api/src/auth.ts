@@ -82,6 +82,11 @@ export const auth = betterAuth({
                 // Matches token_endpoint_auth_method on the client (scripts/create-oauth-client.ts).
                 tokenEndpointAuth: { method: 'client_secret_basic' },
                 pkce: true,
+                // Cloudflare accounts have a verified email; a name is not guaranteed.
+                mapProfileToUser: (profile) => ({
+                  name: typeof profile.name === 'string' && profile.name ? profile.name : String(profile.email ?? '').split('@')[0],
+                  emailVerified: true,
+                }),
               },
             ],
           }),
