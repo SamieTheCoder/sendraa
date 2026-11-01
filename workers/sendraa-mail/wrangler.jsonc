@@ -1,0 +1,31 @@
+// Local development only. In production the Sendraa provisioner uploads the
+// bundled script (dist/worker.js) into each tenant's account through the
+// Cloudflare API, with that tenant's D1, R2 and secret bound in.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sendraa-mail",
+  "main": "src/index.ts",
+  // Keep in sync with COMPATIBILITY_DATE in artifact.js.
+  "compatibility_date": "2026-10-23",
+  // scripts/build.mjs sets the real version for deployed bundles.
+  "define": { "__WORKER_VERSION__": "\"dev\"" },
+  "observability": {
+    "enabled": true,
+    "logs": { "enabled": true, "head_sampling_rate": 1 },
+    "traces": { "enabled": false }
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "sendraa-mail",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "schema"
+    }
+  ],
+  "r2_buckets": [{ "binding": "BLOB", "bucket_name": "sendraa-mail" }],
+  "vars": {
+    "TENANT_ID": "local-dev",
+    "PLATFORM_WEBHOOK": ""
+  },
+  "dev": { "port": 8788 }
+}

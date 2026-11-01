@@ -7,6 +7,7 @@ packages:
 
 allowBuilds:
   esbuild: true
+  workerd: true
 
 minimumReleaseAgeExclude:
   - '@expo/cli@58.1.18'

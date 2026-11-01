@@ -1,0 +1,4 @@
+# Copy to .dev.vars for `wrangler dev`. In production the provisioner binds a
+# random per-tenant secret; the platform uses it to call this Worker and to
+# verify the webhooks it sends.
+TENANT_SECRET=local-dev-secret-change-me-0123456789

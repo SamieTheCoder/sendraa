@@ -1,0 +1,28 @@
+{
+  "name": "@sendraa/mail-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The Worker Sendraa deploys into each tenant's own Cloudflare account. Ingest plus a thin JSON API, nothing else.",
+  "exports": {
+    "./artifact": {
+      "types": "./artifact.d.ts",
+      "default": "./artifact.js"
+    }
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "types": "wrangler types",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "wrangler dev",
+    "db:local": "wrangler d1 execute sendraa-mail --local --file schema/0001_init.sql"
+  },
+  "dependencies": {
+    "postal-mime": "^4.2.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "typescript": "6.0.3",
+    "wrangler": "^4.156.0"
+  }
+}
