@@ -6,6 +6,8 @@ import { Avatar } from '@/components/avatar';
 import { Row, Section, SwitchRow } from '@/components/grouped-list';
 import { SWIPE_NAMES } from '@/mail/selectors';
 import { activeAccount, resetSampleData, setActiveAccount, updateSettings, useMail } from '@/mail/store';
+import { authClient } from '@/lib/auth-client';
+import { ROLE_TITLES, getMe, useActiveWorkspace } from '@/lib/workspace';
 import { useColors } from '@/theme/colors';
 
 const NOTIFY_NAMES = { all: 'All new mail', important: 'Important only', none: 'Off' } as const;
@@ -16,10 +18,20 @@ export default function SettingsScreen() {
   const account = activeAccount(state);
   const accountSettings = state.settings.accounts[account.id];
   const s = state.settings;
+  const workspace = useActiveWorkspace();
+  const me = getMe();
+  const canManagePeople = workspace?.permissions.includes('members.list') ?? false;
 
   return (
     <ScrollView contentInsetAdjustmentBehavior="automatic" style={{ backgroundColor: c.groupedBackground }} contentContainerStyle={{ paddingBottom: 48 }}>
-      <Section title="Mailboxes" footer="Mailboxes your admin has given you. The one you pick is shown in Mail.">
+      {workspace ? (
+        <Section title="Workspace" footer={me ? `Signed in as ${me.user.email}${me.signedInWithCloudflare ? ' with Cloudflare' : ''}.` : undefined}>
+          <Row title={workspace.name} subtitle={workspace.roles.map((r) => ROLE_TITLES[r] ?? r).join(', ') || 'Access to some mailboxes'} />
+          {canManagePeople ? <Row title="People and access" navigates onPress={() => router.push('/people')} /> : null}
+        </Section>
+      ) : null}
+
+      <Section title="Mailboxes" footer="Mailboxes your admin has given you. The one you pick is shown in Mail. Mail shown here is still sample data until the mail service is connected.">
         {state.accounts.map((a) => (
           <Row
             key={a.id}
@@ -75,7 +87,7 @@ export default function SettingsScreen() {
 
       <Section
         title="About"
-        footer="Sendraa is showing sample mail. Northwind Labs and its people are invented, and nothing you send leaves this device until the mail service is connected."
+        footer="Mail is sample data for now. Northwind Labs and its people are invented, and nothing you send leaves this device until the mail service is connected."
       >
         <Row title="Version" value={Constants.expoConfig?.version ?? '1.0.0'} />
         <Row
@@ -94,7 +106,12 @@ export default function SettingsScreen() {
         <Row
           title="Sign out"
           destructive
-          onPress={() => Alert.alert('Sign-in is not connected yet', 'Signing in with Cloudflare arrives with the mail service.')}
+          onPress={() =>
+            Alert.alert('Sign out?', undefined, [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Sign out', style: 'destructive', onPress: () => void authClient.signOut() },
+            ])
+          }
         />
       </Section>
 
