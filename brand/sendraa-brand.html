@@ -1,0 +1,809 @@
+<!doctype html>
+<html lang="en" data-scheme="telegram" data-logo="strip" data-case="lower">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sendraa — Brand Explorations</title>
+<style>
+  @font-face {
+    font-family: "League Gothic";
+    src: url("fonts/league-gothic-latin.woff2") format("woff2");
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+  }
+
+  /* Defaults are the Telegram scheme in light mode. The script applies the chosen scheme. */
+  :root {
+    --brand: #F5C400; --on-brand: #16130E; --tint: #7A5400; --accent: #7A5400;
+    --ink: #16130E; --muted: #625A4C; --ground: #F3F2EE; --card: #FFFFFF; --line: #E1DED6; --soft: #FCEFB4; --deep: #16130E;
+    --m1: var(--ink); --m2: var(--accent); --m3: var(--ground);
+    --ob-m1: #16130E; --ob-m2: #16130E; --od-m1: #F5C400;
+    --radius: 14px;
+    --ease: cubic-bezier(.16, 1, .3, 1);
+    --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, Roboto, "Segoe UI", sans-serif;
+    --font-display: "League Gothic", "Arial Narrow", sans-serif;
+    --font-data: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  .on-brand { --m1: var(--ob-m1); --m2: var(--ob-m2); --m3: var(--brand); }
+  .on-deep  { --m1: var(--od-m1); --m2: #FFFFFF; --m3: var(--deep); }
+  .on-tinted { --m1: #E8E8ED; --m2: #8E8E93; --m3: #1C1C1E; }
+
+  * { box-sizing: border-box; }
+  html { scrollbar-color: var(--line) var(--ground); }
+  body {
+    margin: 0; font-family: var(--font-ui); font-size: 16px; line-height: 1.5;
+    background: var(--ground); color: var(--ink); caret-color: var(--tint);
+    transition: background-color .3s var(--ease), color .3s var(--ease);
+  }
+  ::selection { background: var(--brand); color: var(--on-brand); }
+  :focus-visible { outline: 2px solid var(--tint); outline-offset: 3px; border-radius: 6px; }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+  h1, h2, h3 { margin: 0; text-wrap: balance; }
+  h2 { font-family: var(--font-display); font-weight: 400; font-size: 44px; line-height: 1; letter-spacing: .01em; margin-bottom: 10px; }
+  .sub { color: var(--muted); margin: 0 0 28px; max-width: 68ch; }
+  section { padding: 64px 0 56px; border-top: 1px solid var(--line); }
+
+  /* ---------- Logo ---------- */
+  .lockup { display: inline-flex; align-items: center; gap: .28em; color: var(--ink); line-height: 1; }
+  .lockup svg { height: 1em; width: auto; flex: none; }
+  .wm { font-family: var(--font-display); font-weight: 400; font-size: 1.32em; letter-spacing: .015em; white-space: nowrap; }
+  html[data-case="caps"] .wm { text-transform: uppercase; letter-spacing: .04em; }
+  .wm .stop { display: inline-block; width: .2em; height: .2em; background: var(--m2); margin-left: .05em; }
+  .f1 { fill: var(--m1); } .f2 { fill: var(--m2); } .f3 { fill: var(--m3); }
+  .s1 { fill: none; stroke: var(--m1); }
+
+  /* ---------- Header ---------- */
+  header { padding: 24px 0 56px; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .topbar > .lockup { font-size: 30px; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .dots { display: flex; gap: 6px; flex-wrap: wrap; }
+  .dot-btn {
+    width: 32px; height: 32px; border-radius: 50%; border: 0; padding: 0; cursor: pointer; background: var(--dot);
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,.14); transition: box-shadow .2s var(--ease), transform .2s var(--ease);
+  }
+  html.dark .dot-btn { box-shadow: inset 0 0 0 1px rgba(255,255,255,.3); }
+  .dot-btn:hover { transform: scale(1.08); }
+  .dot-btn[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--ground), 0 0 0 4px var(--ink); }
+  .pill {
+    border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 999px;
+    min-height: 40px; padding: 8px 14px; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+    display: inline-flex; gap: 8px; align-items: center; transition: border-color .2s, box-shadow .2s;
+  }
+  .pill:hover { border-color: var(--muted); }
+  .pill[aria-pressed="true"] { border-color: var(--ink); box-shadow: 0 0 0 3px var(--soft); }
+  .pill svg { width: 16px; height: 16px; }
+  .divider { width: 1px; height: 24px; background: var(--line); margin: 0 4px; }
+
+  .hero { margin-top: 56px; display: grid; grid-template-columns: 1.15fr 1fr; gap: 48px; align-items: center; }
+  .hero h1 { font-family: var(--font-display); font-weight: 400; font-size: clamp(56px, 7.4vw, 96px); line-height: .92; letter-spacing: .005em; }
+  .hero p { color: var(--muted); font-size: 18px; max-width: 60ch; margin: 22px 0 0; }
+  .hero-panel {
+    background: var(--brand); border-radius: 22px; min-height: 300px; position: relative; overflow: hidden;
+    display: grid; place-items: center; padding: 40px 24px; transition: background-color .35s var(--ease);
+  }
+  .hero-panel .paste {
+    --m1: var(--deep); --m2: var(--deep); --m3: #FFFFFF;
+    background: #FFFFFF; padding: 18px 34px 18px 42px; transform: rotate(-2.5deg);
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, 16px 50%);
+  }
+  .hero-panel .paste .lockup { font-size: 54px; color: var(--deep); }
+  .hero-panel .paste-wrap { filter: drop-shadow(0 12px 18px rgba(0,0,0,.2)); }
+  .hero-panel .rule { position: absolute; left: 24px; right: 24px; height: 1px; background: color-mix(in srgb, var(--on-brand) 22%, transparent); }
+
+  /* ---------- Cards ---------- */
+  .grid { display: grid; gap: 20px; }
+  .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .g4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }
+  .card h3 { font-size: 17px; font-weight: 700; }
+  .card p { color: var(--muted); font-size: 14px; margin: 6px 0 0; }
+  .card .meta { display: block; font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .option { cursor: pointer; text-align: left; transition: transform .25s var(--ease), box-shadow .25s var(--ease), border-color .2s; }
+  .option:hover { transform: translateY(-2px); }
+  .option[aria-pressed="true"] { border-color: var(--ink); box-shadow: 0 0 0 4px var(--soft); }
+
+  .stage { border-radius: 10px; display: grid; place-items: center; height: 116px; margin-bottom: 12px; background: var(--ground); overflow: hidden; }
+  .stage .lockup { font-size: 30px; }
+  .tiles { display: flex; gap: 10px; margin-bottom: 16px; }
+  .tiles > div { flex: 1; height: 72px; border-radius: 10px; display: grid; place-items: center; }
+  .tiles svg { width: 44px; height: 44px; }
+
+  .palette { padding: 0; overflow: hidden; display: flex; flex-direction: column; transition: border-color .2s, box-shadow .25s var(--ease); }
+  .palette[data-active="true"] { border-color: var(--ink); box-shadow: 0 0 0 4px var(--soft); }
+  .palette .bar { display: grid; grid-template-columns: 3fr 1.2fr 1fr 1fr; height: 88px; }
+  .palette .body { padding: 18px 20px 20px; display: flex; flex-direction: column; flex: 1; }
+  .palette .kind { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 6px; margin-top: 14px; }
+  .sw { border: 0; border-radius: 8px; height: 54px; overflow: hidden; cursor: copy; font: inherit; font-size: 12px; font-weight: 700; display: flex; flex-direction: column; justify-content: flex-end; align-items: flex-start; padding: 5px 7px; text-align: left; }
+  .sw span { font-family: var(--font-data); font-size: 11px; font-weight: 500; opacity: .9; }
+  .ramp { display: grid; grid-template-columns: repeat(9, 1fr); height: 22px; margin-top: 12px; border-radius: 6px; overflow: hidden; box-shadow: inset 0 0 0 1px var(--line); }
+  .card .ramp-note { font-size: 13px; margin-top: 6px; }
+  .palette .pick { margin-top: auto; padding-top: 16px; }
+  html.dark .sw, html.dark .palette .bar span, html.dark .ramp span { box-shadow: inset 0 0 0 1px rgba(255,255,255,.14); }
+
+  /* ---------- Buttons ---------- */
+  .btn { border: 0; border-radius: 12px; min-height: 48px; padding: 12px 18px; font: inherit; font-weight: 700; font-size: 15px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; transition: transform .2s var(--ease), filter .2s; }
+  .btn:hover { filter: brightness(.96); }
+  .btn:active { transform: translateY(1px); }
+  .btn-primary { background: var(--brand); color: var(--on-brand); }
+  .btn-outline { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+  .btn-sm { min-height: 40px; padding: 8px 14px; font-size: 14px; border-radius: 10px; }
+  .btn-outline[aria-pressed="true"] { background: var(--ink); color: var(--ground); border-color: var(--ink); }
+
+  /* ---------- Email ---------- */
+  .email { background: var(--card); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; max-width: 560px; }
+  .email-meta { padding: 16px 24px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--muted); display: grid; gap: 2px; }
+  .email-meta b { color: var(--ink); font-weight: 600; }
+  .email-main { padding: 28px 24px; }
+  .email-main h3 { font-size: 22px; line-height: 1.25; }
+  .email-main p { color: var(--muted); margin: 10px 0 20px; max-width: 52ch; }
+  .email-main .addr-strip { display: inline-block; font-family: var(--font-data); font-size: 15px; background: var(--soft); color: var(--ink); padding: 8px 18px 8px 22px; margin: 4px 0 22px; clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, 8px 50%); }
+  .email-main .small { font-size: 13px; margin: 16px 0 0; }
+  .email-foot { padding: 16px 24px; background: var(--ground); font-size: 12px; color: var(--muted); display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .email-foot .lockup { font-size: 16px; }
+
+  /* ---------- Icons ---------- */
+  .icons { display: flex; align-items: flex-end; gap: 20px; flex-wrap: wrap; }
+  .icon-item { display: grid; justify-items: center; gap: 10px; font-size: 12px; color: var(--muted); text-align: center; }
+  .tile { background: var(--brand); display: grid; place-items: center; transition: background-color .35s var(--ease); }
+  .tile.on-deep { background: var(--deep); }
+  .tile.on-tinted { background: #1C1C1E; }
+  .tile svg { width: 64%; height: 64%; }
+  .tile.ios-lg { width: 88px; height: 88px; border-radius: 20px; box-shadow: 0 10px 24px -12px rgba(0,0,0,.45); }
+  .tile.android { width: 82px; height: 82px; border-radius: 50%; }
+  .tile.fav32 { width: 32px; height: 32px; border-radius: 7px; }
+  .tile.fav16 { width: 16px; height: 16px; border-radius: 4px; }
+  html.dark .tile.on-deep, html.dark .tile.on-tinted { box-shadow: inset 0 0 0 1px rgba(255,255,255,.14); }
+  .browser-tab { display: inline-flex; align-items: center; gap: 8px; background: var(--card); border: 1px solid var(--line); border-bottom: 0; border-radius: 10px 10px 0 0; padding: 9px 16px; font-size: 13px; margin-top: 30px; }
+
+  .rules { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0 32px; }
+  .rules li { padding: 12px 0; border-top: 1px solid var(--line); font-size: 14px; color: var(--muted); }
+  .rules b { color: var(--ink); font-weight: 600; }
+
+  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(90px); background: var(--deep); color: #FFFFFF; padding: 10px 16px; border-radius: 10px; font-size: 14px; transition: transform .35s var(--ease); pointer-events: none; }
+  html.dark .toast { box-shadow: inset 0 0 0 1px rgba(255,255,255,.2); }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  footer { padding: 32px 0 64px; color: var(--muted); font-size: 13px; border-top: 1px solid var(--line); }
+
+  @media (max-width: 1080px) { .g4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 860px) {
+    .hero, .g2 { grid-template-columns: 1fr; }
+    .hero { margin-top: 36px; gap: 32px; }
+  }
+  @media (max-width: 560px) {
+    .g4 { grid-template-columns: 1fr; }
+    h2 { font-size: 38px; }
+    .hero-panel .paste .lockup { font-size: 42px; }
+    .divider { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition-duration: .01ms !important; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Logo marks. Colours come from --m1 (main), --m2 (secondary), --m3 (counter, the ground behind the mark). -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <!-- A. Strip: a pasted telegram strip, scissor-cut on one end, pointed to send on the other. -->
+  <symbol id="logo-strip" viewBox="0 0 64 44">
+    <g transform="rotate(-8 32 22)">
+      <path class="f1" d="M3 13h43l14 9-14 9H3l7-9z" />
+      <rect class="f3" x="15" y="20.6" width="22" height="2.8" rx="1.4" opacity=".9" />
+    </g>
+  </symbol>
+  <!-- B. Stop: the telegram full stop. A condensed "s" closed with a square stop. -->
+  <symbol id="logo-stop" viewBox="0 0 44 44">
+    <text class="f1" x="7" y="38" font-family="League Gothic, Arial Narrow, sans-serif" font-size="48">s</text>
+    <rect class="f2" x="27" y="29" width="9" height="9" />
+  </symbol>
+  <!-- C. Letterbox: the door of a mailbox you own, with its slot and nameplate. -->
+  <symbol id="logo-letterbox" viewBox="0 0 64 64">
+    <rect class="f1" x="12" y="6" width="40" height="52" rx="7" />
+    <rect class="f3" x="19" y="17" width="26" height="5" rx="2.5" />
+    <rect class="f3" x="20" y="38" width="24" height="12" rx="2.5" />
+    <rect class="f2" x="25" y="42.5" width="14" height="3" rx="1.5" />
+  </symbol>
+  <!-- D. Envelope: the category standard, drawn straight. -->
+  <symbol id="logo-envelope" viewBox="0 0 64 48">
+    <rect class="s1" x="6" y="7" width="52" height="34" rx="6" stroke-width="5" />
+    <path class="s1" d="M8 10l24 18 24-18" stroke-width="5" stroke-linejoin="round" stroke-linecap="round" />
+  </symbol>
+
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M19 14.5A7.5 7.5 0 0 1 9.5 5a7.5 7.5 0 1 0 9.5 9.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" /></symbol>
+  <symbol id="i-case" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18 7.5 6 12 18M4.6 14h5.8" /><path d="M14.5 12.5c.6-1 1.6-1.5 2.8-1.5 1.8 0 2.7 1 2.7 2.7V18m0-2.8c-.6 1.8-1.8 2.8-3.3 2.8-1.3 0-2.2-.8-2.2-1.9 0-1.4 1.3-2.1 5.5-2.1" /></g></symbol>
+</svg>
+
+<div class="wrap">
+  <header>
+    <div class="topbar">
+      <span class="lockup js-lockup" aria-label="Sendraa"></span>
+      <div class="controls">
+        <div class="dots js-dots" role="group" aria-label="Colour scheme"></div>
+        <span class="divider" aria-hidden="true"></span>
+        <button class="pill" id="caseToggle" aria-pressed="false"><svg aria-hidden="true"><use href="#i-case" /></svg>Capitals</button>
+        <button class="pill" id="darkToggle" aria-pressed="false"><svg aria-hidden="true"><use href="#i-moon" /></svg>Dark</button>
+      </div>
+    </div>
+
+    <div class="hero">
+      <div>
+        <h1>Professional email on your own domain.</h1>
+        <p>Choose a logo and a colour scheme. Every preview below follows your choice.</p>
+      </div>
+      <div class="hero-panel">
+        <span class="rule" style="top:34%"></span>
+        <span class="rule" style="top:66%"></span>
+        <div class="paste-wrap"><div class="paste"><span class="lockup js-lockup" aria-label="Sendraa"></span></div></div>
+      </div>
+    </div>
+  </header>
+
+  <section aria-labelledby="h-logos">
+    <h2 id="h-logos">Logo concepts</h2>
+    <p class="sub">Select a concept to use it across the page.</p>
+    <div class="grid g4">
+      <article class="card option js-concept" data-logo="strip" role="button" tabindex="0">
+        <div class="stage js-stage"></div>
+        <div class="tiles"><div class="tile on-brand js-mark"></div><div class="tile on-deep js-mark"></div></div>
+        <h3>Strip</h3>
+        <span class="meta">From the telegram form</span>
+        <p>A pasted telegram strip, cut with scissors on one end and pointed on the other, like a message on its way out. It stays readable at favicon size.</p>
+      </article>
+      <article class="card option js-concept" data-logo="stop" role="button" tabindex="0">
+        <div class="stage js-stage"></div>
+        <div class="tiles"><div class="tile on-brand js-mark"></div><div class="tile on-deep js-mark"></div></div>
+        <h3>Stop</h3>
+        <span class="meta">From the telegram form</span>
+        <p>Telegrams ended every sentence with STOP. The wordmark closes on a square full stop, and the app icon is the "s" with its stop.</p>
+      </article>
+      <article class="card option js-concept" data-logo="letterbox" role="button" tabindex="0">
+        <div class="stage js-stage"></div>
+        <div class="tiles"><div class="tile on-brand js-mark"></div><div class="tile on-deep js-mark"></div></div>
+        <h3>Letterbox</h3>
+        <span class="meta">From the mailbox bank</span>
+        <p>The door of a mailbox you own, with its slot and nameplate. It says "your own address" directly, which is the admin's whole job in Sendraa.</p>
+      </article>
+      <article class="card option js-concept" data-logo="envelope" role="button" tabindex="0">
+        <div class="stage js-stage"></div>
+        <div class="tiles"><div class="tile on-brand js-mark"></div><div class="tile on-deep js-mark"></div></div>
+        <h3>Envelope</h3>
+        <span class="meta">The category standard</span>
+        <p>The envelope every mail app uses. Instantly understood, and easy to confuse with a dozen other apps on a home screen.</p>
+      </article>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-schemes">
+    <h2 id="h-schemes">Colour schemes</h2>
+    <p class="sub">The app follows Apple's design, so the brand colour appears in two places: the app icon, and the tint iOS uses for buttons, links and the selected tab. Each scheme has a tint for light mode and one for dark mode. Every tint and text colour passes WCAG AA contrast. Select a swatch to copy its hex value.</p>
+    <div class="grid g4 js-palettes"></div>
+  </section>
+
+  <section class="grid g2" style="align-items:start" aria-label="Email and icons">
+    <div>
+      <h2>Invite email</h2>
+      <p class="sub">Sent from the admin's own address through the startup's sending setup. Sendraa stays in the footer.</p>
+      <div class="email">
+        <div class="email-meta"><span><b>From</b> Samie Ahmed &lt;samie@northwind.example&gt;</span><span><b>To</b> priya.nair@gmail.com</span><span><b>Subject</b> Your Northwind Labs email is ready</span></div>
+        <div class="email-main">
+          <h3>Samie created a mailbox for you at Northwind Labs</h3>
+          <p>Set a password to start sending and receiving from your new address.</p>
+          <span class="addr-strip">priya@northwind.example</span><br />
+          <button class="btn btn-primary">Set your password</button>
+          <p class="small">This link works once and expires in 7 days.</p>
+        </div>
+        <div class="email-foot"><span>Northwind Labs uses Sendraa for email.</span><span class="lockup js-lockup" aria-label="Sendraa"></span></div>
+      </div>
+    </div>
+    <div>
+      <h2>App icon and favicon</h2>
+      <p class="sub">iOS shows the icon in three appearances: the normal icon, a dark version, and a tinted version that the system colours to match the home screen.</p>
+      <div class="icons">
+        <div class="icon-item"><div class="tile ios-lg on-brand js-mark"></div>iOS</div>
+        <div class="icon-item"><div class="tile ios-lg on-deep js-mark"></div>iOS dark</div>
+        <div class="icon-item"><div class="tile ios-lg on-tinted js-mark"></div>iOS tinted</div>
+        <div class="icon-item"><div class="tile android on-brand js-mark"></div>Android</div>
+        <div class="icon-item"><div class="tile fav32 on-brand js-mark"></div>32 px</div>
+        <div class="icon-item"><div class="tile fav16 on-brand js-mark"></div>16 px</div>
+      </div>
+      <span class="browser-tab"><span class="tile fav16 on-brand js-mark"></span>Inbox · Sendraa</span>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-rules">
+    <h2 id="h-rules">Rules for the brand</h2>
+    <p class="sub">These hold whichever logo and scheme you pick.</p>
+    <ul class="rules">
+      <li><b>The app follows Apple's design.</b> SF Pro, SF Symbols, system controls and system colours. The brand shows up as the tint, the app icon and the wordmark on the sign-in screen.</li>
+      <li><b>Tint is for what you tap.</b> Buttons, links and the selected tab use the light tint in light mode and the dark tint in dark mode. Body text stays in system colours.</li>
+      <li><b>Brand colour is a fill.</b> It fills the app icon, the launch screen and filled buttons, with the on-brand colour for the label. It is never used for text on white.</li>
+      <li><b>Two typefaces.</b> League Gothic for the wordmark and marketing headlines only. SF everywhere inside the app.</li>
+      <li><b>Errors use system red with an icon.</b> This matters most for Postbox red, where colour alone cannot tell an error from the brand.</li>
+      <li><b>Smallest mark is 16 px.</b> Below that, use the brand colour tile alone. Keep clear space around the mark equal to its height.</li>
+    </ul>
+  </section>
+</div>
+
+<footer><div class="wrap">Sendraa brand explorations. Not final. Northwind Labs and its people are sample data.</div></footer>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+  const SCHEMES = [
+    {
+      "id": "telegram",
+      "name": "Telegram",
+      "kind": "Lead direction",
+      "dot": "#F5C400",
+      "text": "Telegraph yellow on the app icon. A deep amber tint keeps buttons and links readable on white. No other mail app on a home screen is yellow.",
+      "brand": "#F5C400",
+      "onBrand": "#16130E",
+      "tint": "#7A5400",
+      "tintDark": "#F5C400",
+      "accent": "#7A5400",
+      "accentOnBrand": "#16130E",
+      "light": {
+        "ink": "#16130E",
+        "muted": "#625A4C",
+        "ground": "#F3F2EE",
+        "card": "#FFFFFF",
+        "line": "#E1DED6",
+        "soft": "#FCEFB4",
+        "deep": "#16130E"
+      },
+      "dark": {
+        "ink": "#F3F2EE",
+        "muted": "#A99D85",
+        "ground": "#16130E",
+        "card": "#221E17",
+        "line": "#3A3328",
+        "soft": "#2B2513"
+      }
+    },
+    {
+      "id": "postbox",
+      "name": "Postbox red",
+      "kind": "Alternate",
+      "dot": "#C8231B",
+      "text": "The red of a roadside letterbox. Confident and instantly about mail. The risk: red also means errors, so error states need an icon as well as colour.",
+      "brand": "#C8231B",
+      "onBrand": "#FFFFFF",
+      "tint": "#B01E17",
+      "tintDark": "#FF7B70",
+      "accent": "#7A120D",
+      "accentOnBrand": "#FFD1CC",
+      "light": {
+        "ink": "#1C1312",
+        "muted": "#6B5752",
+        "ground": "#F5F1F0",
+        "card": "#FFFFFF",
+        "line": "#E6DCDA",
+        "soft": "#FBE3E0",
+        "deep": "#1C1312"
+      },
+      "dark": {
+        "ink": "#F6EEED",
+        "muted": "#B39C98",
+        "ground": "#160E0D",
+        "card": "#231716",
+        "line": "#3A2826",
+        "soft": "#2E1A18"
+      }
+    },
+    {
+      "id": "airmail",
+      "name": "Airmail",
+      "kind": "Alternate",
+      "dot": "#1E3A8A",
+      "text": "Navy with the red of an airmail stripe. Reliable and international, and the red gives the logo some life. Close to the category blue, but darker and warmer.",
+      "brand": "#1E3A8A",
+      "onBrand": "#FFFFFF",
+      "tint": "#1E3A8A",
+      "tintDark": "#8CA8FF",
+      "accent": "#D7262E",
+      "accentOnBrand": "#FF8A8E",
+      "light": {
+        "ink": "#0F172A",
+        "muted": "#55607A",
+        "ground": "#F3F5FA",
+        "card": "#FFFFFF",
+        "line": "#DDE3EF",
+        "soft": "#E4EAFB",
+        "deep": "#0F172A"
+      },
+      "dark": {
+        "ink": "#EDF1FA",
+        "muted": "#9AA6C2",
+        "ground": "#0B1020",
+        "card": "#141B2E",
+        "line": "#26304A",
+        "soft": "#18223F"
+      }
+    },
+    {
+      "id": "wax",
+      "name": "Wax seal",
+      "kind": "Alternate",
+      "dot": "#7A1E3A",
+      "text": "Burgundy sealing wax with a gold rim. Feels premium and personal, like a letter that matters. It reads more boutique than startup.",
+      "brand": "#7A1E3A",
+      "onBrand": "#FFFFFF",
+      "tint": "#7A1E3A",
+      "tintDark": "#F08CA8",
+      "accent": "#9A6F1F",
+      "accentOnBrand": "#E3B861",
+      "light": {
+        "ink": "#1F1216",
+        "muted": "#6E5A60",
+        "ground": "#F5F1F2",
+        "card": "#FFFFFF",
+        "line": "#E5DCDF",
+        "soft": "#F5E2E8",
+        "deep": "#1F1216"
+      },
+      "dark": {
+        "ink": "#F5EDF0",
+        "muted": "#B49EA6",
+        "ground": "#150C0F",
+        "card": "#22151A",
+        "line": "#3A262D",
+        "soft": "#2C1820"
+      }
+    },
+    {
+      "id": "signal",
+      "name": "Signal orange",
+      "kind": "Alternate",
+      "dot": "#F26A1B",
+      "text": "The orange of a telex machine and a courier van. Energetic and fast, good for a startup audience. Needs a dark ink on the icon, like Telegram.",
+      "brand": "#F26A1B",
+      "onBrand": "#1A1410",
+      "tint": "#A8470B",
+      "tintDark": "#FF8A45",
+      "accent": "#A8470B",
+      "accentOnBrand": "#1A1410",
+      "light": {
+        "ink": "#1A1410",
+        "muted": "#6A5D53",
+        "ground": "#F4F2EF",
+        "card": "#FFFFFF",
+        "line": "#E3DED8",
+        "soft": "#FDE3D2",
+        "deep": "#1A1410"
+      },
+      "dark": {
+        "ink": "#F5F0EB",
+        "muted": "#AD9E92",
+        "ground": "#15100C",
+        "card": "#221A15",
+        "line": "#3A2E26",
+        "soft": "#2E1D12"
+      }
+    },
+    {
+      "id": "mailbox",
+      "name": "Mailbox bank",
+      "kind": "Alternate",
+      "dot": "#1F4D3A",
+      "text": "Enamel green and brass, like a wall of numbered letterboxes in an old building. Calm and trustworthy. The risk: green and gold is a familiar \"safe utility\" look.",
+      "brand": "#1F4D3A",
+      "onBrand": "#FFFFFF",
+      "tint": "#1F4D3A",
+      "tintDark": "#D6A740",
+      "accent": "#8F6614",
+      "accentOnBrand": "#C9962E",
+      "light": {
+        "ink": "#14201A",
+        "muted": "#56655C",
+        "ground": "#F1F3F0",
+        "card": "#FFFFFF",
+        "line": "#DDE2DD",
+        "soft": "#E3ECE5",
+        "deep": "#14201A"
+      },
+      "dark": {
+        "ink": "#EEF2EC",
+        "muted": "#9DAEA3",
+        "ground": "#0F1713",
+        "card": "#18231D",
+        "line": "#2A3830",
+        "soft": "#1B2B22"
+      }
+    },
+    {
+      "id": "teal",
+      "name": "Stamp teal",
+      "kind": "Alternate",
+      "dot": "#0F6E68",
+      "text": "Teal from an old postage stamp, with a copper accent. Fresh without being loud, and it sits well beside the system blues in iOS.",
+      "brand": "#0F6E68",
+      "onBrand": "#FFFFFF",
+      "tint": "#0F6E68",
+      "tintDark": "#4FD1C5",
+      "accent": "#A9522B",
+      "accentOnBrand": "#F2A57F",
+      "light": {
+        "ink": "#0E1E1D",
+        "muted": "#536664",
+        "ground": "#EFF4F3",
+        "card": "#FFFFFF",
+        "line": "#D8E3E1",
+        "soft": "#DDF0EE",
+        "deep": "#0E1E1D"
+      },
+      "dark": {
+        "ink": "#EAF4F2",
+        "muted": "#93ADA9",
+        "ground": "#0A1615",
+        "card": "#12211F",
+        "line": "#223835",
+        "soft": "#143230"
+      }
+    },
+    {
+      "id": "carbon",
+      "name": "Carbon copy",
+      "kind": "Alternate",
+      "dot": "#4A3FD8",
+      "text": "The blue-violet of carbon paper, the \"cc\" in every email. Modern and techy, with a nod to the history of the cc field.",
+      "brand": "#4A3FD8",
+      "onBrand": "#FFFFFF",
+      "tint": "#4A3FD8",
+      "tintDark": "#A79FFF",
+      "accent": "#2C2580",
+      "accentOnBrand": "#C9C4FF",
+      "light": {
+        "ink": "#15132A",
+        "muted": "#5D5A78",
+        "ground": "#F3F2F9",
+        "card": "#FFFFFF",
+        "line": "#E0DEEF",
+        "soft": "#E7E5FB",
+        "deep": "#15132A"
+      },
+      "dark": {
+        "ink": "#EFEEFA",
+        "muted": "#A3A0C2",
+        "ground": "#0E0C1E",
+        "card": "#18162E",
+        "line": "#2A2748",
+        "soft": "#1F1B45"
+      }
+    },
+    {
+      "id": "lime",
+      "name": "Midnight lime",
+      "kind": "Alternate",
+      "dot": "#C6F432",
+      "text": "Electric lime on near-black. Loud, young and very \"new startup\". In light mode the tint has to be a dark olive, so the lime lives mostly on the icon.",
+      "brand": "#C6F432",
+      "onBrand": "#12160A",
+      "tint": "#4D6B00",
+      "tintDark": "#C6F432",
+      "accent": "#4D6B00",
+      "accentOnBrand": "#12160A",
+      "light": {
+        "ink": "#12160A",
+        "muted": "#5C6250",
+        "ground": "#F2F4EE",
+        "card": "#FFFFFF",
+        "line": "#DEE2D6",
+        "soft": "#EDF9C7",
+        "deep": "#12160A"
+      },
+      "dark": {
+        "ink": "#F1F5E8",
+        "muted": "#A2AC90",
+        "ground": "#0D1008",
+        "card": "#171C10",
+        "line": "#2A3220",
+        "soft": "#222C10"
+      }
+    },
+    {
+      "id": "graphite",
+      "name": "Graphite",
+      "kind": "Alternate",
+      "dot": "#18181B",
+      "text": "One neutral scale and a single signal orange. Clean and serious, like most modern software. It reads clearly as a product, with little that is Sendraa's own.",
+      "brand": "#18181B",
+      "onBrand": "#FFFFFF",
+      "tint": "#C2410C",
+      "tintDark": "#FB923C",
+      "accent": "#C2410C",
+      "accentOnBrand": "#FB923C",
+      "light": {
+        "ink": "#18181B",
+        "muted": "#5F6168",
+        "ground": "#FAFAFA",
+        "card": "#FFFFFF",
+        "line": "#E6E6E8",
+        "soft": "#F1F1F2",
+        "deep": "#0B0B0D"
+      },
+      "dark": {
+        "ink": "#F4F4F5",
+        "muted": "#A1A1AA",
+        "ground": "#0B0B0D",
+        "card": "#18181B",
+        "line": "#2A2A2E",
+        "soft": "#1C1C20"
+      }
+    },
+    {
+      "id": "standard",
+      "name": "Standard",
+      "kind": "Category standard",
+      "dot": "#2557D6",
+      "text": "The blue that most mail apps use. Nobody will question it, and nobody will remember it. Included so you can compare against the familiar choice.",
+      "brand": "#2557D6",
+      "onBrand": "#FFFFFF",
+      "tint": "#2557D6",
+      "tintDark": "#7EA6FF",
+      "accent": "#2557D6",
+      "accentOnBrand": "#FFFFFF",
+      "light": {
+        "ink": "#111827",
+        "muted": "#5E6573",
+        "ground": "#F7F9FC",
+        "card": "#FFFFFF",
+        "line": "#E3E8F0",
+        "soft": "#E8EEFC",
+        "deep": "#0D1320"
+      },
+      "dark": {
+        "ink": "#E8ECF4",
+        "muted": "#9AA3B5",
+        "ground": "#0D1320",
+        "card": "#151D2E",
+        "line": "#263049",
+        "soft": "#17223B"
+      }
+    }
+  ];
+  const TELEGRAM_RAMP = ['#16130E', '#221E17', '#3A3328', '#625A4C', '#847C6D', '#A99D85', '#CFC8BA', '#E1DED6', '#F3F2EE'];
+
+  const root = document.documentElement;
+  const VIEWBOX = { strip: '0 0 64 44', stop: '0 0 44 44', letterbox: '0 0 64 64', envelope: '0 0 64 48' };
+
+  const luminance = (hex) => {
+    const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+      .map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+  };
+  const contrast = (a, b) => {
+    const x = luminance(a), y = luminance(b);
+    return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+  };
+  // Marks are graphics, so they need 3:1 against what they sit on.
+  const pick = (preferred, fallback, ground) => (contrast(preferred, ground) >= 3 ? preferred : fallback);
+  const readable = (bg, s) => (contrast('#FFFFFF', bg) >= contrast(s.light.ink, bg) ? '#FFFFFF' : s.light.ink);
+
+  const applyScheme = (s, dark) => {
+    const t = dark ? { ...s.light, ...s.dark } : s.light;
+    const vars = {
+      '--brand': s.brand, '--on-brand': s.onBrand, '--tint': dark ? s.tintDark : s.tint, '--accent': s.accent,
+      '--ink': t.ink, '--muted': t.muted, '--ground': t.ground, '--card': t.card, '--line': t.line, '--soft': t.soft, '--deep': s.light.deep,
+      '--m1': dark ? pick(s.tintDark, t.ink, t.ground) : pick(s.brand, t.ink, t.ground),
+      '--m2': dark ? pick(s.accentOnBrand, s.tintDark, t.ground) : s.accent,
+      '--m3': t.ground,
+      '--ob-m1': s.onBrand, '--ob-m2': s.accentOnBrand,
+      '--od-m1': pick(s.brand, s.tintDark, s.light.deep),
+    };
+    for (const [k, v] of Object.entries(vars)) root.style.setProperty(k, v);
+  };
+
+  const mark = (logo) => `<svg viewBox="${VIEWBOX[logo]}" aria-hidden="true"><use href="#logo-${logo}" /></svg>`;
+  const lockupInner = (logo) =>
+    logo === 'stop'
+      ? '<span class="wm">sendraa<span class="stop"></span></span>'
+      : `${mark(logo)}<span class="wm">sendraa</span>`;
+
+  const swatch = (label, hex, s) =>
+    `<button class="sw" style="background:${hex};color:${readable(hex, s)}" data-hex="${hex}">${label}<span>${hex.slice(1)}</span></button>`;
+
+  // Build the scheme dots and palette cards once.
+  document.querySelector('.js-dots').innerHTML = SCHEMES.map((s) =>
+    `<button class="dot-btn js-scheme" data-scheme="${s.id}" style="--dot:${s.dot}" aria-label="${s.name}" title="${s.name}"></button>`).join('');
+
+  document.querySelector('.js-palettes').innerHTML = SCHEMES.map((s) => `
+    <article class="card palette js-palette-card" data-scheme="${s.id}">
+      <div class="bar" aria-hidden="true"><span style="background:${s.brand}"></span><span style="background:${s.accent}"></span><span style="background:${s.light.deep}"></span><span style="background:${s.light.ground}"></span></div>
+      <div class="body">
+        <h3>${s.name}</h3>
+        <span class="kind">${s.kind}</span>
+        <p>${s.text}</p>
+        <div class="swatches">
+          ${swatch('Brand', s.brand, s)}${swatch('Tint', s.tint, s)}${swatch('Tint dark', s.tintDark, s)}${swatch('Ink', s.light.ink, s)}${swatch('Ground', s.light.ground, s)}
+        </div>
+        ${s.id === 'telegram' ? `<div class="ramp" role="img" aria-label="Neutral ramp, nine steps from ink to paper">${TELEGRAM_RAMP.map((h) => `<span style="background:${h}"></span>`).join('')}</div>
+        <p class="ramp-note">Neutral ramp. Every grey is one of these nine steps.</p>` : ''}
+        <div class="pick"><button class="btn btn-outline btn-sm js-scheme" data-scheme="${s.id}">Use this scheme</button></div>
+      </div>
+    </article>`).join('');
+
+  const render = () => {
+    const { logo, scheme } = root.dataset;
+    const s = SCHEMES.find((x) => x.id === scheme) || SCHEMES[0];
+    applyScheme(s, root.classList.contains('dark'));
+
+    document.querySelectorAll('.js-lockup').forEach((el) => { el.innerHTML = lockupInner(logo); });
+    document.querySelectorAll('.js-mark').forEach((el) => { el.innerHTML = mark(logo); });
+
+    document.querySelectorAll('.js-concept').forEach((el) => {
+      const own = el.dataset.logo;
+      el.setAttribute('aria-pressed', own === logo);
+      el.setAttribute('aria-label', `Use the ${el.querySelector('h3').textContent} logo`);
+      el.querySelector('.js-stage').innerHTML = `<span class="lockup" aria-hidden="true">${lockupInner(own)}</span>`;
+      el.querySelectorAll('.js-mark').forEach((m) => { m.innerHTML = mark(own); });
+    });
+    document.querySelectorAll('.js-scheme').forEach((el) => el.setAttribute('aria-pressed', el.dataset.scheme === s.id));
+    document.querySelectorAll('.js-palette-card').forEach((el) => el.setAttribute('data-active', el.dataset.scheme === s.id));
+
+    localStorage.setItem('sendraa-brand', JSON.stringify({
+      logo, scheme: s.id, case: root.dataset.case, dark: root.classList.contains('dark'),
+    }));
+  };
+
+  const toast = (message) => {
+    const el = document.getElementById('toast');
+    el.textContent = message;
+    el.classList.add('show');
+    clearTimeout(toast.timer);
+    toast.timer = setTimeout(() => el.classList.remove('show'), 1600);
+  };
+
+  document.querySelectorAll('.js-scheme').forEach((el) =>
+    el.addEventListener('click', () => { root.dataset.scheme = el.dataset.scheme; render(); }),
+  );
+  document.querySelectorAll('.js-concept').forEach((el) => {
+    const choose = () => { root.dataset.logo = el.dataset.logo; render(); };
+    el.addEventListener('click', choose);
+    el.addEventListener('keydown', (e) => {
+      if (e.target === el && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); choose(); }
+    });
+  });
+  document.querySelectorAll('.sw').forEach((el) =>
+    el.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(el.dataset.hex);
+        toast(`Copied ${el.dataset.hex}`);
+      } catch {
+        toast(`${el.dataset.hex} (copying is blocked here)`);
+      }
+    }),
+  );
+
+  const darkToggle = document.getElementById('darkToggle');
+  const caseToggle = document.getElementById('caseToggle');
+  const sync = () => {
+    darkToggle.setAttribute('aria-pressed', root.classList.contains('dark'));
+    caseToggle.setAttribute('aria-pressed', root.dataset.case === 'caps');
+  };
+  darkToggle.addEventListener('click', () => { root.classList.toggle('dark'); sync(); render(); });
+  caseToggle.addEventListener('click', () => { root.dataset.case = root.dataset.case === 'caps' ? 'lower' : 'caps'; sync(); render(); });
+
+  try {
+    const saved = JSON.parse(localStorage.getItem('sendraa-brand') || 'null');
+    if (saved && VIEWBOX[saved.logo] && SCHEMES.some((x) => x.id === saved.scheme)) {
+      root.dataset.logo = saved.logo;
+      root.dataset.scheme = saved.scheme;
+      root.dataset.case = saved.case === 'caps' ? 'caps' : 'lower';
+      root.classList.toggle('dark', Boolean(saved.dark));
+    }
+  } catch { /* ignore a corrupt saved state and use the defaults */ }
+
+  // ?scheme=airmail&logo=stop&dark=1&case=caps opens the board on a specific choice.
+  const params = new URLSearchParams(location.search);
+  if (SCHEMES.some((x) => x.id === params.get('scheme'))) root.dataset.scheme = params.get('scheme');
+  if (VIEWBOX[params.get('logo')]) root.dataset.logo = params.get('logo');
+  if (params.has('dark')) root.classList.toggle('dark', params.get('dark') === '1');
+  if (params.has('case')) root.dataset.case = params.get('case') === 'caps' ? 'caps' : 'lower';
+
+  sync();
+  render();
+</script>
+</body>
+</html>
