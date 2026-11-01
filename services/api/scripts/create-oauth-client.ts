@@ -49,7 +49,9 @@ const config = {
   client_uri: `https://${site.hostname.split('.').slice(-2).join('.')}`,
   redirect_uris: [`${baseUrl.replace(/\/$/, '')}/api/auth/callback/cloudflare`],
   grant_types: ['authorization_code', 'refresh_token'],
-  response_types: ['code'],
+  // Cloudflare only grants the client the `openid` scope when `id_token` is an
+  // allowed response type. Sign-in still uses response_type=code.
+  response_types: ['code', 'id_token'],
   token_endpoint_auth_method: 'client_secret_basic',
   scopes,
   optional_scopes,
