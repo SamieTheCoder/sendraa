@@ -1,0 +1,30 @@
+{
+  "name": "@sendraa/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file=.env src/index.ts",
+    "start": "tsx --env-file=.env src/index.ts",
+    "migrate": "tsx --env-file=.env src/migrate.ts",
+    "smoke": "tsx --env-file=.env scripts/smoke.ts",
+    "db:up": "docker compose -f docker-compose.dev.yml up -d",
+    "db:down": "docker compose -f docker-compose.dev.yml down",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@better-auth/expo": "1.7.14",
+    "@hono/node-server": "2.1.5",
+    "better-auth": "1.7.14",
+    "hono": "4.13.16",
+    "pg": "8.23.1",
+    "zod": "4.6.7",
+    "@sendraa/cloudflare": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "@types/pg": "8.23.1",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3"
+  }
+}

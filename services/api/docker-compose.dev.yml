@@ -1,0 +1,14 @@
+# Local Postgres for the control plane. Development only.
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: sendraa
+      POSTGRES_PASSWORD: sendraa
+      POSTGRES_DB: sendraa
+    ports:
+      - "54329:5432"
+    volumes:
+      - sendraa-pg:/var/lib/postgresql/data
+volumes:
+  sendraa-pg:
