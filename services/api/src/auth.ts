@@ -3,7 +3,7 @@ import { betterAuth } from 'better-auth';
 import { APIError, createAuthMiddleware } from 'better-auth/api';
 import { genericOAuth } from 'better-auth/plugins';
 
-import { onboardingScopes } from '@sendraa/cloudflare';
+import { CF_OAUTH, onboardingScopes } from '@sendraa/cloudflare';
 
 import { pool } from './db.js';
 import { cloudflareConfigured, devAdminSignup, env, isDev } from './env.js';
@@ -24,6 +24,10 @@ export const auth = betterAuth({
   baseURL: env.BETTER_AUTH_URL,
   secret: env.BETTER_AUTH_SECRET,
   database: pool,
+  // An OAuth failure (consent declined, Cloudflare error) returns to the app's
+  // sign-in screen instead of stranding the user on an API error page. The
+  // deep link closes the in-app browser.
+  onAPIError: { errorURL: `${env.APP_SCHEME}://sign-in` },
   trustedOrigins: [
     `${env.APP_SCHEME}://`,
     `${env.APP_SCHEME}://*`,
@@ -77,7 +81,12 @@ export const auth = betterAuth({
                 providerId: 'cloudflare',
                 clientId: env.CLOUDFLARE_CLIENT_ID!,
                 clientSecret: env.CLOUDFLARE_CLIENT_SECRET!,
-                discoveryUrl: 'https://dash.cloudflare.com/.well-known/openid-configuration',
+                discoveryUrl: CF_OAUTH.discovery,
+                // Set explicitly so a failed discovery fetch at startup cannot
+                // silently drop the provider. Discovery still supplies the JWKS.
+                authorizationUrl: CF_OAUTH.authorize,
+                tokenUrl: CF_OAUTH.token,
+                userInfoUrl: CF_OAUTH.userinfo,
                 scopes: [...onboardingScopes()],
                 // Matches token_endpoint_auth_method on the client (scripts/create-oauth-client.ts).
                 tokenEndpointAuth: { method: 'client_secret_basic' },

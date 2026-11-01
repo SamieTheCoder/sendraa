@@ -1,3 +1,4 @@
+import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState, type ComponentRef } from 'react';
 import { KeyboardAvoidingView, LayoutAnimation, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -36,6 +37,12 @@ export default function SignIn() {
       .catch(() => setError(`Cannot reach Sendraa at ${API_URL}. Check your connection.`));
   }, []);
 
+  // Where the API sends OAuth failures (sendraa://sign-in?error=...).
+  const params = useLocalSearchParams<{ error?: string; error_description?: string }>();
+  useEffect(() => {
+    if (params.error) setError(params.error_description || `Cloudflare sign-in failed (${params.error}). Try again.`);
+  }, [params.error, params.error_description]);
+
   const open = (next: Panel) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setError(null);
@@ -48,8 +55,17 @@ export default function SignIn() {
     // Opens Cloudflare's consent screen in the system browser. The API keeps
     // the Cloudflare tokens; the app only gets a Sendraa session back.
     const { error: err } = await authClient.signIn.social({ provider: 'cloudflare' as never, callbackURL: '/' });
+    if (!err) {
+      // The browser closed. If no session came back, Cloudflare stopped the
+      // sign-in or the person cancelled; say so instead of doing nothing.
+      const { data } = await authClient.getSession();
+      setBusy(null);
+      if (!data) {
+        setError('Cloudflare sign-in did not finish. Try again, and complete the Cloudflare login in the same window that opens. If you use two-factor codes from email, copy the code rather than opening the link.');
+      }
+      return;
+    }
     setBusy(null);
-    if (!err) return;
     if (/access_denied|no.*account/i.test(err.message ?? '')) {
       setError('Cloudflare did not share an account with Sendraa. If your organisation turned off third-party app access, ask a Cloudflare Super Administrator to allow it.');
     } else {

@@ -16,6 +16,11 @@ export const authClient = createAuthClient({
       storagePrefix: 'sendraa',
       // Session cookies live in the Keychain / Keystore, never in plain storage.
       storage: SecureStore,
+      // A fresh browser cookie jar for every sign-in. Cloudflare's login keeps a
+      // CSRF cookie per attempt; leftovers from an earlier or abandoned attempt
+      // in the shared Safari jar cause "No CSRF value available in the session
+      // cookie" (request_forbidden). The cost is logging in to Cloudflare each time.
+      webBrowserOptions: { preferEphemeralSession: true },
     }),
   ],
 });
