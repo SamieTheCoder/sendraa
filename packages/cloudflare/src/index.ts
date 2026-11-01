@@ -18,8 +18,9 @@ export {
 } from './api.js';
 
 export {
+  OPTIONAL_SCOPES,
   PROTOCOL_SCOPES,
-  REQUIRED_CAPABILITIES,
-  RESOURCE_SCOPES,
+  REQUIRED_SCOPES,
+  clientRegistrationScopes,
   onboardingScopes,
 } from './scopes.js';
