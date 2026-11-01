@@ -4,6 +4,7 @@
   "private": true,
   "packageManager": "pnpm@12.14.0",
   "scripts": {
+    "dev": "zsh scripts/dev.sh",
     "mobile": "pnpm --filter @sendraa/mobile start",
     "mobile:ios": "pnpm --filter @sendraa/mobile ios",
     "mobile:android": "pnpm --filter @sendraa/mobile android",
