@@ -21,6 +21,7 @@ import {
   useMail,
 } from '@/mail/store';
 import type { Draft, FolderKey, Thread } from '@/mail/types';
+import { useLiveMail } from '@/mail/use-live-mail';
 import { useColors } from '@/theme/colors';
 import { ToolbarIcon } from '@/theme/icons';
 
@@ -44,7 +45,9 @@ export default function MailList() {
   const c = useColors();
   const [selected, setSelected] = useState<string[]>([]);
   const [refreshing, setRefreshing] = useState(false);
-  const [updatedAt, setUpdatedAt] = useState(() => new Date());
+  const [sampleUpdatedAt, setSampleUpdatedAt] = useState(() => new Date());
+  const liveMail = useLiveMail();
+  const updatedAt = liveMail.live ? liveMail.updatedAt : sampleUpdatedAt;
 
   const folder = state.folder;
   const account = activeAccount(state);
@@ -75,9 +78,13 @@ export default function MailList() {
 
   const refresh = () => {
     setRefreshing(true);
-    // The sample store has nothing to fetch; this keeps the gesture honest about when it last ran.
+    if (liveMail.live) {
+      void liveMail.refresh().finally(() => setRefreshing(false));
+      return;
+    }
+    // Sample mailboxes have nothing to fetch; this keeps the gesture honest about when it last ran.
     setTimeout(() => {
-      setUpdatedAt(new Date());
+      setSampleUpdatedAt(new Date());
       setRefreshing(false);
     }, 600);
   };
@@ -238,7 +245,14 @@ export default function MailList() {
           )}
           ItemSeparatorComponent={() => <View style={[styles.sep, { backgroundColor: c.separator, marginLeft: state.settings.showAvatars ? 68 : 16 }]} />}
           ListHeaderComponent={
-            inTrash || inSpam ? (
+            liveMail.error ? (
+              <View style={[styles.banner, { backgroundColor: c.fill }]} accessibilityLiveRegion="polite">
+                <Text style={[styles.bannerText, { color: c.secondaryLabel }]}>{liveMail.error}</Text>
+                <Pressable onPress={refresh} hitSlop={8} accessibilityRole="button">
+                  <Text style={[styles.bannerAction, { color: c.tint }]}>Try again</Text>
+                </Pressable>
+              </View>
+            ) : inTrash || inSpam ? (
               <View style={[styles.banner, { backgroundColor: c.fill }]}>
                 <Text style={[styles.bannerText, { color: c.secondaryLabel }]}>
                   {inTrash ? 'Mail in Trash stays here until you empty it.' : 'Spam stays here until you empty it.'}
@@ -252,7 +266,7 @@ export default function MailList() {
             ) : undefined
           }
           ListFooterComponent={
-            threads.length > 0 ? (
+            threads.length > 0 && updatedAt ? (
               <Text style={[styles.updated, { color: c.tertiaryLabel }]}>
                 Updated {updatedAt.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
               </Text>

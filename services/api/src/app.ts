@@ -7,6 +7,7 @@ import { cloudflareConfigured, devAdminSignup } from './env.js';
 import { IamError } from './iam/policy.js';
 import { cloudflare } from './routes/cloudflare.js';
 import { hooks } from './routes/hooks.js';
+import { mail } from './routes/mail.js';
 import { invites } from './routes/invites.js';
 import { tenants } from './routes/tenants.js';
 
@@ -28,6 +29,7 @@ app.on(['GET', 'POST'], '/api/auth/*', (c) => auth.handler(c.req.raw));
 app.route('/v1', invites);
 app.route('/v1', hooks);
 app.route('/v1', cloudflare);
+app.route('/v1', mail);
 app.route('/v1', tenants);
 
 app.onError((err, c) => {

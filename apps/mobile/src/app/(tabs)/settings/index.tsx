@@ -39,7 +39,14 @@ export default function SettingsScreen() {
         </Section>
       ) : null}
 
-      <Section title="Mailboxes" footer="Mailboxes your admin has given you. The one you pick is shown in Mail. Mail shown here is still sample data until the mail service is connected.">
+      <Section
+        title="Mailboxes"
+        footer={
+          state.accounts.some((a) => a.live)
+            ? 'Mailboxes your admin has given you. The one you pick is shown in Mail.'
+            : 'Mailboxes your admin has given you. The one you pick is shown in Mail. This is sample mail until email setup is finished.'
+        }
+      >
         {state.accounts.map((a) => (
           <Row
             key={a.id}

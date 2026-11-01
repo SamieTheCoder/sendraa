@@ -578,7 +578,9 @@ P2 is the milestone that de-risks everything. Nothing after it is novel.
 | F1 app: onboarding picks the CF account and lists its domains | Done, typechecks; needs the OAuth client to run end to end |
 | `workers/sendraa-mail` ingest + JSON API | Done, verified locally under `wrangler dev` |
 | Provisioner F2/F3: D1, R2, Worker, workers.dev, Email Routing, DMARC, catch-all, admin@ | Built; payloads verified live; full run needs a Cloudflare sign-in |
-| Sending (F6/F7), push (F9), real inbox in the app | Next |
+| P2 mail path: API proxies threads, thread, flags, attachments to the Worker with per-mailbox IAM | Done; `pnpm mail:e2e` 10/10 against `wrangler dev` |
+| App inbox on real mail (list, open, read/star/move/snooze/labels written back) | Built, typechecks; sending from a real mailbox says it is not set up yet |
+| Sending (F6/F7), push (F9), opening attachments in the app, deleting forever | Next |
 
 ---
 

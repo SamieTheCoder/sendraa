@@ -30,6 +30,11 @@ export type Thread = {
   snoozedUntil: string | null;
   /** ISO timestamp for scheduled sends. */
   scheduledAt: string | null;
+  /**
+   * Set for conversations that live in the workspace's own Cloudflare account.
+   * `loaded` is false while only the list summary is known (one stand-in message).
+   */
+  remote?: { tenantId: string; loaded: boolean };
 };
 
 export type Account = {
@@ -38,6 +43,8 @@ export type Account = {
   name: string;
   /** Shared mailboxes are reached by several members, like hello@ or support@. */
   shared: boolean;
+  /** Real mailbox in the workspace (id is the mailbox id), as opposed to sample data. */
+  live?: boolean;
 };
 
 export type Label = { id: string; name: string; color: string };

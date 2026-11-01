@@ -44,15 +44,26 @@ export async function handleApi(request: Request, env: Env): Promise<Response> {
     m = /^\/v1\/mailboxes\/([\w-]{1,64})\/threads$/.exec(path);
     if (m && method === 'GET') return await listThreads(env, m[1]!, url.searchParams);
 
-    m = /^\/v1\/threads\/([\w-]{1,64})$/.exec(path);
-    if (m && method === 'GET') return await getThread(env, m[1]!);
-    if (m && method === 'PATCH') return await patchThread(env, m[1]!, request);
+    // Everything below is scoped to one mailbox, so the platform's per-mailbox
+    // access check covers it: a thread id from another mailbox is simply not found.
+    m = /^\/v1\/mailboxes\/([\w-]{1,64})\/threads\/([\w-]{1,64})$/.exec(path);
+    if (m && method === 'GET') return await getThread(env, m[1]!, m[2]!);
+    if (m && method === 'PATCH') return await patchThread(env, m[1]!, m[2]!, request);
 
-    m = /^\/v1\/messages\/([\w-]{1,64})\/raw$/.exec(path);
-    if (m && method === 'GET') return await streamObject(env, 'select raw_key as k, \'message/rfc822\' as t from messages where id = ?', m[1]!);
+    m = /^\/v1\/mailboxes\/([\w-]{1,64})\/messages\/([\w-]{1,64})\/raw$/.exec(path);
+    if (m && method === 'GET') {
+      return await streamObject(env, "select raw_key as k, 'message/rfc822' as t from messages where id = ? and mailbox_id = ?", m[2]!, m[1]!);
+    }
 
-    m = /^\/v1\/attachments\/([\w-]{1,64})$/.exec(path);
-    if (m && method === 'GET') return await streamObject(env, 'select r2_key as k, content_type as t from attachments where id = ?', m[1]!);
+    m = /^\/v1\/mailboxes\/([\w-]{1,64})\/attachments\/([\w-]{1,64})$/.exec(path);
+    if (m && method === 'GET') {
+      return await streamObject(
+        env,
+        'select a.r2_key as k, a.content_type as t from attachments a join messages m on m.id = a.message_id where a.id = ? and m.mailbox_id = ?',
+        m[2]!,
+        m[1]!,
+      );
+    }
 
     return json({ error: { code: 'NOT_FOUND', message: 'Not found.' } }, 404);
   } catch (err) {
@@ -182,9 +193,9 @@ type MessageRow = {
 
 type AttachmentRow = { id: string; message_id: string; filename: string; content_type: string; size: number; content_id: string | null; inline: number };
 
-async function getThread(env: Env, id: string) {
+async function getThread(env: Env, mailboxId: string, id: string) {
   const [thread, messages, attachments] = await env.DB.batch([
-    env.DB.prepare('select * from threads where id = ?').bind(id),
+    env.DB.prepare('select * from threads where id = ? and mailbox_id = ?').bind(id, mailboxId),
     env.DB.prepare(
       `select id, message_id, in_reply_to, refs, from_addr, to_addrs, cc_addrs, reply_to, subject, text_body, html_body, sent_at, needs_parse, direction
          from messages where thread_id = ? order by sent_at`,
@@ -220,7 +231,7 @@ async function getThread(env: Env, id: string) {
   });
 }
 
-async function patchThread(env: Env, id: string, request: Request) {
+async function patchThread(env: Env, mailboxId: string, id: string, request: Request) {
   const body = await readJson(request);
   const sets: string[] = [];
   const params: (string | number | null)[] = [];
@@ -254,16 +265,16 @@ async function patchThread(env: Env, id: string, request: Request) {
   }
   if (!sets.length) throw new HttpError(400, 'INVALID_ARGUMENT', 'Nothing to update.');
 
-  const row = await env.DB.prepare(`update threads set ${sets.join(', ')} where id = ? returning *`)
-    .bind(...params, id)
+  const row = await env.DB.prepare(`update threads set ${sets.join(', ')} where id = ? and mailbox_id = ? returning *`)
+    .bind(...params, id, mailboxId)
     .first<ThreadRow>();
   if (!row) throw new HttpError(404, 'NOT_FOUND', 'Thread not found.');
   return json(threadJson(row));
 }
 
 /** Streams an R2 object without buffering it in the Worker. */
-async function streamObject(env: Env, sql: string, id: string) {
-  const row = await env.DB.prepare(sql).bind(id).first<{ k: string; t: string }>();
+async function streamObject(env: Env, sql: string, id: string, mailboxId: string) {
+  const row = await env.DB.prepare(sql).bind(id, mailboxId).first<{ k: string; t: string }>();
   if (!row) throw new HttpError(404, 'NOT_FOUND', 'Not found.');
   const object = await env.BLOB.get(row.k);
   if (!object) throw new HttpError(404, 'NOT_FOUND', 'Stored object is missing.');

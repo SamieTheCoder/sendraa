@@ -111,10 +111,32 @@ function persist() {
 let state: MailState = load();
 const listeners = new Set<() => void>();
 
-function setState(next: MailState) {
+/** Receives conversation changes that must be written to the server. Set by mail/live.ts. */
+type RemoteSink = (threads: Thread[]) => void;
+let remoteSink: RemoteSink | null = null;
+export function setRemoteSink(sink: RemoteSink | null) {
+  remoteSink = sink;
+}
+
+/**
+ * Every action builds new thread objects only for what it changed, so comparing
+ * references finds exactly the conversations to send to the server. That also
+ * covers undo, which restores the earlier objects.
+ */
+function setState(next: MailState, options?: { fromServer?: boolean }) {
+  const before = state.threads;
   state = next;
   persist();
   listeners.forEach((l) => l());
+  if (options?.fromServer || !remoteSink || before === next.threads) return;
+  const old = new Map(before.map((t) => [t.id, t]));
+  const changed = next.threads.filter((t) => t.remote && old.has(t.id) && old.get(t.id) !== t);
+  if (changed.length) remoteSink(changed);
+}
+
+/** Replaces state with what the server says, without echoing it back. */
+export function applyFromServer(fn: (s: MailState) => MailState) {
+  setState(fn(state), { fromServer: true });
 }
 
 function subscribe(listener: () => void) {
@@ -276,6 +298,9 @@ export function moveTo(ids: string[], location: Location) {
 }
 
 export function deleteForever(ids: string[]) {
+  // Server conversations cannot be deleted yet; they stay in Trash rather than coming back on refresh.
+  ids = ids.filter((id) => !state.threads.find((t) => t.id === id)?.remote);
+  if (ids.length === 0) return;
   const previous = state;
   const set = new Set(ids);
   setState({ ...state, threads: state.threads.filter((t) => !set.has(t.id)) });
@@ -287,7 +312,7 @@ export function emptyFolder(location: 'trash' | 'spam') {
   const accountId = state.activeAccountId;
   setState({
     ...state,
-    threads: state.threads.filter((t) => !(t.location === location && t.accountId === accountId)),
+    threads: state.threads.filter((t) => t.remote || !(t.location === location && t.accountId === accountId)),
   });
   offerUndo(location === 'trash' ? 'Trash emptied' : 'Spam emptied', previous);
 }
@@ -410,6 +435,9 @@ export function send(draft: Draft, options: { scheduledAt?: Date; reopen: (draft
   }
 
   const account = state.accounts.find((a) => a.id === draft.accountId) ?? activeAccount();
+  if (account.live) {
+    return { ok: false, error: 'Sending from your domain is not set up yet. Receiving works now; sending through Cloudflare or Gmail comes next.' };
+  }
   const from: Address = { name: account.name, address: account.address };
   const message: Message = {
     id: newId('m'),

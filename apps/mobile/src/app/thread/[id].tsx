@@ -21,6 +21,7 @@ import {
   unsnooze,
   useMail,
 } from '@/mail/store';
+import { loadThread } from '@/mail/live';
 import type { Message } from '@/mail/types';
 import { useColors } from '@/theme/colors';
 import { ToolbarIcon } from '@/theme/icons';
@@ -42,6 +43,19 @@ export default function ThreadScreen() {
   useEffect(() => {
     if (thread?.unread) markRead([thread.id], true);
   }, [thread?.id, thread?.unread]);
+
+  // Server conversations arrive as a summary; fetch the messages on open.
+  const [loadError, setLoadError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!thread?.remote || thread.remote.loaded) return;
+    loadThread(thread.id).catch((err) => setLoadError(err instanceof Error ? err.message : 'Could not load this conversation.'));
+  }, [thread?.id, thread?.remote?.loaded]);
+
+  // Expand the newest message once the real messages replace the summary.
+  const lastId = thread?.messages[thread.messages.length - 1]?.id;
+  useEffect(() => {
+    if (lastId) setExpanded((e) => (e.has(lastId) ? e : new Set([...e, lastId])));
+  }, [lastId]);
 
   if (!thread) {
     return (
@@ -155,6 +169,12 @@ export default function ThreadScreen() {
           })}
         </View>
 
+        {loadError ? (
+          <Text style={[styles.loadError, { color: c.red }]} accessibilityLiveRegion="polite">
+            {loadError}
+          </Text>
+        ) : null}
+
         {thread.messages.map((m, i) => (
           <MessageView
             key={m.id}
@@ -262,7 +282,7 @@ function MessageView({
               {message.attachments.map((a) => (
                 <Pressable
                   key={a.id}
-                  onPress={() => Alert.alert(a.name, 'Opening attachments needs the mail API, which is not connected yet.')}
+                  onPress={() => Alert.alert(a.name, 'Opening attachments in the app comes in the next update.')}
                   style={({ pressed }) => [styles.attachment, { borderColor: c.separator, backgroundColor: pressed ? c.fill : 'transparent' }]}
                   accessibilityRole="button"
                   accessibilityLabel={`Attachment ${a.name}, ${fileSize(a.size)}`}
@@ -309,6 +329,7 @@ function ReplyButton({ ios, android, label, onPress }: { ios: 'arrowshape.turn.u
 }
 
 const styles = StyleSheet.create({
+  loadError: { fontSize: 14, lineHeight: 19, paddingHorizontal: 16, paddingVertical: 8 },
   head: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingHorizontal: 16, paddingTop: 8 },
   subject: { flex: 1, fontSize: 24, fontWeight: '700', letterSpacing: -0.3, lineHeight: 30 },
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 12 },

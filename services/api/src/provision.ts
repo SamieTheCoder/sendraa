@@ -7,6 +7,7 @@ import { audit, one, pool, query } from './db.js';
 import { env } from './env.js';
 import { grant } from './iam/policy.js';
 import { mailboxResource } from './iam/roles.js';
+import { workerFetch } from './worker-client.js';
 
 /**
  * F2 + F3: connect a domain and create the mail system inside the tenant's own
@@ -187,15 +188,10 @@ const run: Record<StepId, (ctx: Ctx) => Promise<Record<string, unknown>>> = {
 /** Calls the tenant's Worker with its secret. workers.dev can take a few seconds to start serving. */
 export async function workerCall(tenant: Pick<Tenant, 'worker_url' | 'worker_secret_enc'>, method: string, path: string, body?: unknown): Promise<unknown> {
   if (!tenant.worker_url || !tenant.worker_secret_enc) throw new SetupError('The mail Worker is not set up yet.');
-  const secret = open(tenant.worker_secret_enc);
   let last = '';
   for (let attempt = 0; attempt < 6; attempt++) {
     if (attempt) await new Promise((r) => setTimeout(r, 2000 * attempt));
-    const res = await fetch(`${tenant.worker_url}${path}`, {
-      method,
-      headers: { authorization: `Bearer ${secret}`, ...(body ? { 'content-type': 'application/json' } : {}) },
-      body: body ? JSON.stringify(body) : undefined,
-    }).catch((err: unknown) => {
+    const res = await workerFetch(tenant, method, path, body).catch((err: unknown) => {
       last = err instanceof Error ? err.message : String(err);
       return null;
     });
