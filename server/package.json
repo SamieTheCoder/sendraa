@@ -13,8 +13,6 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@hono/node-server": "2.1.5",
-    "hono": "4.13.14",
     "mailparser": "3.14.1",
     "pino": "10.4.0",
     "postgres": "4.0.0",

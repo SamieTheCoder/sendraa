@@ -5,8 +5,8 @@
  * mailboxes and conversations from the server, loads a full conversation when
  * it is opened, and writes changes (read, star, move, snooze, labels) back.
  */
-import { api } from '@/lib/api';
-import { API_URL, authClient } from '@/lib/auth-client';
+import { api, sessionInit } from '@/lib/api';
+import { API_URL } from '@/lib/auth-client';
 
 import { applyFromServer, getMail, setRemoteSink } from './store';
 import type { Account, Address, Attachment, Location, Message, Thread } from './types';
@@ -170,9 +170,13 @@ function pushChanges(threads: Thread[]) {
   }
 }
 
-/** Download URL and headers for an attachment of a server conversation. */
+/**
+ * Download URL and headers for an attachment of a server conversation. On web the headers are
+ * empty: the browser sends the session cookie itself (load it with credentials included).
+ */
 export async function attachmentRequest(mailboxId: string, attachmentId: string) {
-  return { uri: `${API_URL}${base(mailboxId)}/attachments/${attachmentId}`, headers: { cookie: await authClient.getCookie() } };
+  const { headers } = await sessionInit();
+  return { uri: `${API_URL}${base(mailboxId)}/attachments/${attachmentId}`, headers };
 }
 
 export const isLive = () => tenantId !== null;

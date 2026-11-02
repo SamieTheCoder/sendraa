@@ -1,6 +1,8 @@
 import { expoClient } from '@better-auth/expo/client';
 import { createAuthClient } from 'better-auth/react';
 import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
+import { recordAuthRateLimit } from './auth-feedback';
 
 /**
  * The control-plane API. On a physical device, localhost is the phone, so set
@@ -10,6 +12,7 @@ export const API_URL = (process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:878
 
 export const authClient = createAuthClient({
   baseURL: API_URL,
+  fetchOptions: { onError: ({ response }) => recordAuthRateLimit(response) },
   plugins: [
     expoClient({
       scheme: 'sendraa',
@@ -24,3 +27,13 @@ export const authClient = createAuthClient({
     }),
   ],
 });
+
+/**
+ * Where an OAuth sign-in returns to. Native uses app paths, which the Expo plugin turns into
+ * `sendraa://` deep links. On web a relative path would resolve against the API's host, so it must
+ * be this page's own origin (app.sendraa.tech, or localhost in development).
+ */
+export function authReturnURL(path: string): string {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') return `${window.location.origin}${path}`;
+  return path;
+}

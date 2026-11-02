@@ -1,8 +1,9 @@
 import { Stack } from 'expo-router';
 
-import { useTintHex } from '@/theme/colors';
+import { useColors, useTintHex } from '@/theme/colors';
 
 export default function MailLayout() {
   const tint = useTintHex();
-  return <Stack screenOptions={{ headerTintColor: tint, headerLargeTitle: true, headerTransparent: process.env.EXPO_OS === 'ios', headerBlurEffect: 'systemChromeMaterial' }} />;
+  const c = useColors();
+  return <Stack screenOptions={{ headerTintColor: tint, headerTitleStyle: { color: c.label }, headerStyle: { backgroundColor: c.background }, headerTransparent: false, headerShadowVisible: false }} />;
 }

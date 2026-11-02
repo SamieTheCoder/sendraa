@@ -1,7 +1,9 @@
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { TextBox } from '@/components/form';
 import { Icon } from '@/components/icon';
 import { Row, Section } from '@/components/grouped-list';
 import { createLabel, moveTo, toggleLabel, useMail } from '@/mail/store';
@@ -33,7 +35,7 @@ export default function OrganizeSheet() {
   };
 
   return (
-    <ScrollView style={{ backgroundColor: c.groupedBackground }} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled">
+    <KeyboardAwareScrollView bottomOffset={24} style={{ backgroundColor: c.groupedBackground }} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled">
       <Section title="Move to">
         {DESTINATIONS.map((d) => (
           <Row
@@ -64,12 +66,11 @@ export default function OrganizeSheet() {
           );
         })}
         <View style={styles.newRow}>
-          <TextInput
+          <TextBox
             value={newLabel}
             onChangeText={setNewLabel}
             placeholder="New label"
-            placeholderTextColor={c.tertiaryLabel}
-            style={[styles.input, { color: c.label }]}
+            boxStyle={styles.box}
             onSubmitEditing={addLabel}
             returnKeyType="done"
             accessibilityLabel="New label name"
@@ -79,12 +80,12 @@ export default function OrganizeSheet() {
           </Pressable>
         </View>
       </Section>
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   dot: { width: 12, height: 12, borderRadius: 6 },
-  newRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, minHeight: 46 },
-  input: { flex: 1, fontSize: 17, paddingVertical: 10 },
+  newRow: { flexDirection: 'row', alignItems: 'center', gap: 16, padding: 16 },
+  box: { flex: 1 },
 });

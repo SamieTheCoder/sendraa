@@ -1,6 +1,7 @@
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { Button, ErrorText, Field } from '@/components/form';
 import { api, ApiError } from '@/lib/api';
@@ -60,9 +61,9 @@ export default function AcceptInvite() {
   };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: c.groupedBackground }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <View style={{ flex: 1, backgroundColor: c.groupedBackground }}>
       <Stack.Screen options={{ title: 'Invitation', headerShown: true }} />
-      <ScrollView contentContainerStyle={styles.wrap} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled">
+      <KeyboardAwareScrollView bottomOffset={24} contentContainerStyle={styles.wrap} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled">
         {loadError ? (
           <View style={styles.block}>
             <Text style={[styles.title, { color: c.label }]}>This invite cannot be used</Text>
@@ -117,8 +118,8 @@ export default function AcceptInvite() {
             </Text>
           </View>
         )}
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
+    </View>
   );
 }
 

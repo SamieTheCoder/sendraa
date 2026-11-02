@@ -53,6 +53,8 @@ export default function SetupScreen() {
   }, [tid]);
 
   useEffect(() => {
+    // Network completion updates state asynchronously.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void refresh();
   }, [refresh]);
 
@@ -173,7 +175,10 @@ export default function SetupScreen() {
       <ErrorText>{error}</ErrorText>
 
       {ready ? (
-        <Button variant="brand" title="Open inbox" onPress={() => router.replace('/mail')} />
+        <View style={{ gap: 12 }}>
+          <Button variant="brand" title="Secure your account" onPress={() => router.push({ pathname: '/account-security', params: { onboarding: '1' } })} />
+          <Button variant="plain" title="Open inbox" onPress={() => router.replace('/mail')} />
+        </View>
       ) : (
         <Button
           variant="brand"

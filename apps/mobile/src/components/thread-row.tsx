@@ -1,7 +1,8 @@
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
-import { useRef } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
 import ReanimatedSwipeable, { SwipeDirection, type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 
 import { Avatar } from '@/components/avatar';
@@ -41,6 +42,7 @@ function sentLine(thread: Thread): string {
 export function ThreadRow({ thread, state, selecting, selected, onToggleSelect, openId, swipe = true }: Props) {
   const c = useColors();
   const swipeRef = useRef<SwipeableMethods>(null);
+  useEffect(() => { if (selecting) swipeRef.current?.reset(); }, [selecting]);
   const last = thread.messages[thread.messages.length - 1]!;
   const account = state.accounts.find((a) => a.id === thread.accountId);
   const me = account?.address.toLowerCase() ?? '';
@@ -124,6 +126,7 @@ export function ThreadRow({ thread, state, selecting, selected, onToggleSelect, 
     <Pressable
       onPress={open}
       onLongPress={() => {
+        swipeRef.current?.reset();
         Haptics.selectionAsync();
         onToggleSelect(thread.id);
       }}
@@ -197,19 +200,27 @@ export function ThreadRow({ thread, state, selecting, selected, onToggleSelect, 
     </Pressable>
   );
 
-  if (!swipe || selecting || (!leading && !trailing)) return row;
+  if (!swipe || (!leading && !trailing)) return <View style={{ backgroundColor: c.background }}>{row}</View>;
 
   return (
     <ReanimatedSwipeable
       ref={swipeRef}
+      enabled={!selecting}
+      childrenContainerStyle={{ backgroundColor: c.background }}
+      containerStyle={{ backgroundColor: c.background }}
+      dragOffsetFromLeft={Platform.OS === 'ios' ? 20 : 10}
+      dragOffsetFromRight={Platform.OS === 'ios' ? -20 : -10}
+      overshootLeft={Platform.OS === 'ios' ? false : undefined}
+      overshootRight={Platform.OS === 'ios' ? false : undefined}
       friction={1.6}
       leftThreshold={90}
       rightThreshold={90}
       overshootFriction={8}
-      renderLeftActions={leading ? () => actionView(leading, 'flex-start') : undefined}
-      renderRightActions={trailing ? () => actionView(trailing, 'flex-end') : undefined}
+      renderLeftActions={leading ? (progress) => <SwipeReveal progress={progress}>{actionView(leading, 'flex-start')}</SwipeReveal> : undefined}
+      renderRightActions={trailing ? (progress) => <SwipeReveal progress={progress}>{actionView(trailing, 'flex-end')}</SwipeReveal> : undefined}
       onSwipeableWillOpen={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)}
       onSwipeableOpen={(direction) => {
+        if (selecting) return;
         // RIGHT means the row moved right, revealing the leading actions.
         run(direction === SwipeDirection.RIGHT ? state.settings.swipeLeading : state.settings.swipeTrailing);
       }}
@@ -217,6 +228,11 @@ export function ThreadRow({ thread, state, selecting, selected, onToggleSelect, 
       {row}
     </ReanimatedSwipeable>
   );
+}
+
+function SwipeReveal({ progress, children }: { progress: SharedValue<number>; children: React.ReactNode }) {
+  const style = useAnimatedStyle(() => ({ opacity: progress.get() > 0 ? 1 : 0 }));
+  return <Animated.View style={[{ flexDirection: 'row' }, style]}>{children}</Animated.View>;
 }
 
 const styles = StyleSheet.create({

@@ -11,6 +11,17 @@ const schema = z.object({
   CLOUDFLARE_CLIENT_ID: z.string().optional(),
   CLOUDFLARE_CLIENT_SECRET: z.string().optional(),
   APP_SCHEME: z.string().default('sendraa'),
+  SMTP_HOST: z.string().default('smtp.gmail.com'),
+  SMTP_PORT: z.coerce.number().int().default(465),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASSWORD: z.string().optional(),
+  SMTP_FROM: z.string().optional(),
+  PASSKEY_RP_ID: z.string().optional(),
+  APPLE_APP_ID: z.string().optional(),
+  ANDROID_PACKAGE: z.string().default('com.scientificsamie.sendraa'),
+  ANDROID_SHA256_FINGERPRINTS: z.string().default(''),
+  /** Only enable behind a Cloudflare Tunnel with an origin inaccessible to clients. */
+  TRUST_CLOUDFLARE_PROXY: z.enum(['true', 'false']).default('false'),
   INVITE_TTL_DAYS: z.coerce.number().int().positive().default(7),
   MAX_OPEN_INVITES: z.coerce.number().int().positive().default(50),
   /**
@@ -19,6 +30,13 @@ const schema = z.object({
    * Refused in production.
    */
   ALLOW_DEV_ADMIN_SIGNUP: z.enum(['true', 'false']).default('false'),
+  /**
+   * Comma-separated origins of the web app, allowed to call the API from a browser with cookies.
+   * A development API also allows localhost on any port (see web-origins.ts).
+   */
+  WEB_ORIGINS: z.string().default('https://app.sendraa.tech'),
+  /** Send session cookies cross-site (SameSite=None). Defaults to on in development, off in production. */
+  WEB_CROSS_SITE_COOKIES: z.enum(['true', 'false']).optional(),
 });
 
 const parsed = schema.safeParse(process.env);
@@ -34,3 +52,4 @@ if (parsed.data.NODE_ENV === 'production' && parsed.data.ALLOW_DEV_ADMIN_SIGNUP 
 }
 export const devAdminSignup = parsed.data.ALLOW_DEV_ADMIN_SIGNUP === 'true';
 export const cloudflareConfigured = Boolean(env.CLOUDFLARE_CLIENT_ID && env.CLOUDFLARE_CLIENT_SECRET);
+export const recoveryConfigured = Boolean(env.SMTP_USER && env.SMTP_PASSWORD);

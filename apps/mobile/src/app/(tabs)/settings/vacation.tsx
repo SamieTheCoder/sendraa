@@ -1,5 +1,7 @@
-import { ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { StyleSheet, View } from 'react-native';
 
+import { TextBox } from '@/components/form';
 import { Section, SwitchRow } from '@/components/grouped-list';
 import { activeAccount, updateAccountSettings, useMail } from '@/mail/store';
 import type { Vacation } from '@/mail/types';
@@ -15,7 +17,7 @@ export default function VacationScreen() {
   const set = (patch: Partial<Vacation>) => updateAccountSettings(account.id, { vacation: { ...vacation, ...patch } });
 
   return (
-    <ScrollView contentInsetAdjustmentBehavior="automatic" style={{ backgroundColor: c.groupedBackground }} keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets>
+    <KeyboardAwareScrollView bottomOffset={24} keyboardShouldPersistTaps="handled" contentInsetAdjustmentBehavior="automatic" style={{ backgroundColor: c.groupedBackground }} keyboardDismissMode="interactive">
       <Section footer="While this is on, each person who writes to you gets this reply once every four days. It starts working when the mail service is connected.">
         <SwitchRow title="Vacation responder" value={vacation.enabled} onValueChange={(enabled) => set({ enabled })} />
       </Section>
@@ -23,25 +25,19 @@ export default function VacationScreen() {
       {vacation.enabled ? (
         <>
           <Section title="Reply">
-            <View>
-              <TextInput
+            <View style={styles.boxes}>
+              <TextBox
                 value={vacation.subject}
                 onChangeText={(subject) => set({ subject })}
                 placeholder="Subject"
-                placeholderTextColor={c.tertiaryLabel}
-                style={[styles.line, { color: c.label }]}
                 accessibilityLabel="Reply subject"
               />
-            </View>
-            <View>
-              <TextInput
+              <TextBox
                 value={vacation.message}
                 onChangeText={(message) => set({ message })}
                 placeholder="I am away until Monday and will reply when I am back."
-                placeholderTextColor={c.tertiaryLabel}
                 multiline
-                textAlignVertical="top"
-                style={[styles.message, { color: c.label }]}
+                style={styles.message}
                 accessibilityLabel="Reply message"
               />
             </View>
@@ -51,11 +47,11 @@ export default function VacationScreen() {
           </Section>
         </>
       ) : null}
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  line: { fontSize: 17, paddingHorizontal: 16, paddingVertical: 13 },
-  message: { minHeight: 140, fontSize: 16, lineHeight: 22, paddingHorizontal: 16, paddingVertical: 12 },
+  boxes: { padding: 16, gap: 12 },
+  message: { minHeight: 140, fontSize: 16 },
 });

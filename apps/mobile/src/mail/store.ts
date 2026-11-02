@@ -6,7 +6,7 @@
  * actions below, which is the seam where API calls will go later.
  */
 import { useSyncExternalStore } from 'react';
-import { Platform } from 'react-native';
+import { mailStorage } from './persistence';
 
 import { parseAddresses, stripPrefix } from './format';
 import {
@@ -63,22 +63,7 @@ function freshState(): MailState {
 
 type KV = { getItemSync(key: string): string | null; setItemSync(key: string, value: string): void };
 
-function storage(): KV | null {
-  try {
-    if (Platform.OS === 'web') {
-      if (typeof localStorage === 'undefined') return null;
-      return {
-        getItemSync: (k) => localStorage.getItem(k),
-        setItemSync: (k, v) => localStorage.setItem(k, v),
-      };
-    }
-    // Loaded lazily so the web bundle never pulls in the native SQLite module.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    return require('expo-sqlite/kv-store').Storage as KV;
-  } catch {
-    return null;
-  }
-}
+function storage(): KV { return mailStorage; }
 
 function load(): MailState {
   try {

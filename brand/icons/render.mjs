@@ -38,8 +38,23 @@ const svg = ({ size, bg, fill, counter, scale, radius = 0, counterOpacity }) => 
     ${background}<g transform="translate(${x} ${y}) scale(${k})">${mark(fill, counter, counterOpacity)}</g></svg>`;
 };
 
+/**
+ * The bare mark, white with the counter line cut out, on a transparent canvas trimmed to the strip.
+ * The app tints it (Image tintColor), so one file serves ink-on-yellow and yellow-on-ink.
+ */
+const bareMark = (scale) => {
+  const w = 64 * scale;
+  const h = 44 * scale;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 64 44">
+    <defs><mask id="cut"><rect width="64" height="44" fill="#fff"/>
+      <g transform="rotate(-8 32 22)"><rect x="15" y="20.6" width="22" height="2.8" rx="1.4" fill="#000"/></g></mask></defs>
+    <g mask="url(#cut)"><g transform="rotate(-8 32 22)"><path d="M3 13h43l14 9-14 9H3l7-9z" fill="#FFFFFF"/></g></g></svg>`;
+};
+
 // iOS masks the corners itself, so iOS icons are full-bleed squares.
 const files = {
+  // In-app mark, tinted at runtime. 3x of a 64×44 point design.
+  'mark.png': bareMark(3),
   // Light: ink strip on telegraph yellow.
   'icon.png': svg({ size: 1024, bg: YELLOW, fill: INK, counter: YELLOW, scale: 0.62 }),
   // Dark: yellow strip on ink.
@@ -55,8 +70,6 @@ const files = {
   'splash-icon-dark.png': svg({ size: 512, fill: YELLOW, counter: INK, scale: 0.9 }),
   // Favicon: a rounded tile, since browsers do not mask.
   'favicon.png': svg({ size: 192, bg: YELLOW, fill: INK, counter: YELLOW, scale: 0.7, radius: 42 }),
-  // In-app brand tile (sign-in screen). Rounded here because it is drawn by the app, not the OS.
-  'brand-tile.png': svg({ size: 288, bg: YELLOW, fill: INK, counter: YELLOW, scale: 0.64, radius: 64 }),
 };
 
 const BROWSERS = [
@@ -105,14 +118,15 @@ const send = (method, params = {}) =>
 await send('Page.enable');
 for (const [name, markup] of Object.entries(files)) {
   const size = Number(/width="(\d+)"/.exec(markup)[1]);
-  await send('Emulation.setDeviceMetricsOverride', { width: size, height: size, deviceScaleFactor: 1, mobile: false });
+  const height = Number(/height="(\d+)"/.exec(markup)[1]);
+  await send('Emulation.setDeviceMetricsOverride', { width: size, height, deviceScaleFactor: 1, mobile: false });
   await send('Emulation.setDefaultBackgroundColorOverride', { color: { r: 0, g: 0, b: 0, a: 0 } });
   const html = `<!doctype html><html><body style="margin:0;background:transparent">${markup}</body></html>`;
   await send('Page.navigate', { url: `data:text/html;base64,${Buffer.from(html).toString('base64')}` });
   await sleep(250);
-  const shot = await send('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: 0, width: size, height: size, scale: 1 } });
+  const shot = await send('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: 0, width: size, height, scale: 1 } });
   writeFileSync(join(OUT, name), Buffer.from(shot.data, 'base64'));
-  console.log(`${name} ${size}×${size}`);
+  console.log(`${name} ${size}×${height}`);
 }
 ws.close();
 proc.kill();

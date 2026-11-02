@@ -2,12 +2,15 @@ import { expo } from '@better-auth/expo';
 import { betterAuth } from 'better-auth';
 import { APIError, createAuthMiddleware } from 'better-auth/api';
 import { genericOAuth } from 'better-auth/plugins';
+import { passkey } from '@better-auth/passkey';
 
 import { CF_OAUTH, CloudflareApi, onboardingScopes } from '@sendraa/cloudflare';
 
-import { pool } from './db.js';
-import { cloudflareConfigured, devAdminSignup, env, isDev } from './env.js';
+import { one, pool } from './db.js';
+import { cloudflareConfigured, devAdminSignup, env, isDev, recoveryConfigured } from './env.js';
 import { findOpenInvite } from './invites.js';
+import { sendPasswordReset } from './security-mail.js';
+import { crossSiteCookies, trustedWebOrigins } from './web-origins.js';
 
 export const INVITE_HEADER = 'x-sendraa-invite';
 
@@ -23,22 +26,32 @@ export const auth = betterAuth({
   appName: 'Sendraa',
   baseURL: env.BETTER_AUTH_URL,
   secret: env.BETTER_AUTH_SECRET,
+  advanced: {
+    ipAddress: { ipAddressHeaders: env.TRUST_CLOUDFLARE_PROXY === 'true' ? ['cf-connecting-ip'] : [] },
+    // Only the development API (localhost web app -> api-dev) needs cross-site cookies.
+    ...(crossSiteCookies ? { defaultCookieAttributes: { sameSite: 'none' as const, secure: true } } : {}),
+  },
   database: pool,
   // An OAuth failure (consent declined, Cloudflare error) returns to the app's
   // sign-in screen instead of stranding the user on an API error page. The
   // deep link closes the in-app browser.
   onAPIError: { errorURL: `${env.APP_SCHEME}://sign-in` },
-  trustedOrigins: [
+  trustedOrigins: (request) => [
     `${env.APP_SCHEME}://`,
     `${env.APP_SCHEME}://*`,
     // Local tools (smoke test, curl) reach the API directly, not through the tunnel.
     ...(isDev ? ['exp://', 'exp://**', `http://localhost:${env.PORT}`] : []),
+    // The web app: app.sendraa.tech, and localhost on any port against a development API.
+    ...trustedWebOrigins(request),
   ],
   emailAndPassword: {
     enabled: true,
     minPasswordLength: 10,
     maxPasswordLength: 128,
     autoSignIn: true,
+    resetPasswordTokenExpiresIn: 15 * 60,
+    revokeSessionsOnPasswordReset: true,
+    ...(recoveryConfigured ? { sendResetPassword: async ({ user, token }: { user: { id: string; email: string; emailVerified: boolean }; token: string }) => sendPasswordReset(user, token) } : {}),
   },
   account: {
     // Cloudflare refresh tokens can change DNS and deploy Workers in the
@@ -48,6 +61,7 @@ export const auth = betterAuth({
   session: {
     expiresIn: 60 * 60 * 24 * 30,
     updateAge: 60 * 60 * 24,
+    freshAge: 15 * 60,
   },
   rateLimit: {
     enabled: true,
@@ -56,10 +70,24 @@ export const auth = betterAuth({
     customRules: {
       '/sign-in/email': { window: 60, max: 10 },
       '/sign-up/email': { window: 60, max: 5 },
+      '/sign-in/oauth2': { window: 60, max: 10 },
+      '/sign-in/social': { window: 60, max: 10 },
+      '/request-password-reset': { window: 60, max: 3 },
     },
   },
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
+      if (ctx.path === '/sign-in/email' || ctx.path === '/request-password-reset') {
+        const email = String(ctx.body?.email ?? '').trim().toLowerCase();
+        const alias = await one<{ email: string }>(
+          `select u.email from login_alias a join "user" u on u.id = a.user_id
+           join mailbox m on m.id = a.mailbox_id
+           join tenant_member tm on tm.tenant_id = m.tenant_id and tm.user_id = u.id
+           where a.address = $1 and not m.shared
+           and not exists (select 1 from "user" direct where lower(direct.email) = $1)`, [email],
+        );
+        if (alias && ctx.body) ctx.body.email = alias.email;
+      }
       if (ctx.path !== '/sign-up/email') return;
       // Password sign-up is only for accepting an invite, and only for the invited address.
       const token = ctx.headers?.get(INVITE_HEADER) ?? '';
@@ -73,6 +101,11 @@ export const auth = betterAuth({
   },
   plugins: [
     expo(),
+    ...(env.PASSKEY_RP_ID ? [passkey({
+      rpID: env.PASSKEY_RP_ID,
+      rpName: 'Sendraa',
+      origin: [new URL(env.BETTER_AUTH_URL).origin, ...env.ANDROID_SHA256_FINGERPRINTS.split(',').filter(Boolean).map((fingerprint) => `android:apk-key-hash:${Buffer.from(fingerprint.replaceAll(':', ''), 'hex').toString('base64url')}`)],
+    })] : []),
     ...(cloudflareConfigured
       ? [
           genericOAuth({

@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 import { API_URL, authClient } from './auth-client';
 
 export class ApiError extends Error {
@@ -10,18 +12,26 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * How a request carries the session. Native stores the session cookie itself (Keychain / Keystore)
+ * and sends it as a header. Browsers forbid setting the Cookie header, so on web the browser's own
+ * cookie jar is used instead (`credentials: 'include'`), as the auth client already does.
+ */
+export async function sessionInit(): Promise<{ headers: Record<string, string>; credentials: RequestCredentials }> {
+  if (Platform.OS === 'web') return { headers: {}, credentials: 'include' };
+  // The cookie is sent by hand; letting fetch add its own interferes.
+  return { headers: { cookie: await authClient.getCookie() }, credentials: 'omit' };
+}
+
 /** Calls the control-plane API with the stored session cookie. */
 export async function api<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
   let res: Response;
   try {
+    const session = await sessionInit();
     res = await fetch(`${API_URL}${path}`, {
       method: init.method ?? 'GET',
-      headers: {
-        'content-type': 'application/json',
-        cookie: await authClient.getCookie(),
-      },
-      // The cookie is sent by hand above; letting fetch add its own interferes.
-      credentials: 'omit',
+      headers: { 'content-type': 'application/json', ...session.headers },
+      credentials: session.credentials,
       body: init.body === undefined ? undefined : JSON.stringify(init.body),
     });
   } catch {

@@ -1,13 +1,19 @@
-import { Stack } from 'expo-router';
-import { useMemo, useState } from 'react';
-import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Stack, useFocusEffect, useNavigation } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef, type ComponentProps } from 'react';
+import { FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { TextBox } from '@/components/form';
 import { EmptyState } from '@/components/empty-state';
 import { Icon } from '@/components/icon';
 import { ThreadRow } from '@/components/thread-row';
 import { search } from '@/mail/selectors';
 import { addRecentSearch, clearRecentSearches, useMail } from '@/mail/store';
 import { useColors } from '@/theme/colors';
+
+type SearchBarCommands = NonNullable<NonNullable<ComponentProps<typeof Stack.SearchBar>['ref']>['current']>;
+
+// The header search view mounts a beat after the tab switches; focusing earlier is ignored.
+const FOCUS_DELAY = Platform.OS === 'android' ? 250 : 120;
 
 const FILTERS = [
   { label: 'Unread', query: 'is:unread' },
@@ -20,27 +26,61 @@ const FILTERS = [
 export default function SearchScreen() {
   const state = useMail();
   const c = useColors();
+  const navigation = useNavigation();
+  const inputRef = useRef<ComponentRef<typeof TextInput>>(null);
+  const searchRef = useRef<SearchBarCommands>(null);
   const [query, setQuery] = useState('');
   const results = useMemo(() => search(state, query), [state, query]);
   const trimmed = query.trim();
 
+  const focusSearch = useCallback(() => {
+    if (Platform.OS === 'android') inputRef.current?.focus();
+    else searchRef.current?.focus();
+  }, []);
+  useFocusEffect(useCallback(() => {
+    const timer = setTimeout(focusSearch, FOCUS_DELAY);
+    return () => clearTimeout(timer);
+  }, [focusSearch]));
+  useEffect(() => {
+    const tab = navigation.getParent();
+    return tab?.addListener('tabPress' as never, () => {
+      if (navigation.isFocused()) focusSearch();
+    });
+  }, [navigation, focusSearch]);
+
+  const runQuery = (q: string) => {
+    searchRef.current?.setText(q);
+    setQuery(q);
+  };
+
   return (
     <>
       <Stack.Screen options={{ title: 'Search' }} />
-      <Stack.SearchBar
+      {Platform.OS === 'android' ? (
+        <View style={{ padding: 16, backgroundColor: c.background }}>
+          <TextBox ref={inputRef} value={query} onChangeText={setQuery} placeholder="Search mail" accessibilityLabel="Search mail" autoFocus autoCapitalize="none" autoCorrect={false} returnKeyType="search" onSubmitEditing={() => addRecentSearch(query)} trailing={query ? <Pressable onPress={() => setQuery('')} accessibilityRole="button" accessibilityLabel="Clear search" style={{ minHeight: 44, minWidth: 44, justifyContent: 'center', alignItems: 'center' }}><Icon ios="xmark" android="close" color={c.label} /></Pressable> : undefined} />
+        </View>
+      ) : <Stack.SearchBar
+        ref={searchRef}
         placeholder="Search mail"
         autoCapitalize="none"
+        autoFocus
+        textColor={c.label}
+        hintTextColor={c.secondaryLabel}
+        headerIconColor={c.label}
+        tintColor={c.tint}
         onChangeText={(e) => setQuery(e.nativeEvent.text)}
         onSearchButtonPress={(e) => addRecentSearch(e.nativeEvent.text)}
         onCancelButtonPress={() => setQuery('')}
-      />
+        onClose={() => setQuery('')}
+      />}
 
       {trimmed ? (
         <FlatList
           data={results}
           keyExtractor={(t) => t.id}
           contentInsetAdjustmentBehavior="automatic"
-          keyboardDismissMode="on-drag"
+          keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled"
           style={{ backgroundColor: c.background }}
           renderItem={({ item }) => (
             <ThreadRow thread={item} state={state} selecting={false} selected={false} onToggleSelect={() => {}} swipe={false} />
@@ -63,14 +103,14 @@ export default function SearchScreen() {
           }
         />
       ) : (
-        <ScrollView contentInsetAdjustmentBehavior="automatic" keyboardDismissMode="on-drag" style={{ backgroundColor: c.background }}>
-          <Text style={[styles.heading, { color: c.secondaryLabel }]}>Filters</Text>
+        <ScrollView contentInsetAdjustmentBehavior="automatic" keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled" style={{ backgroundColor: c.background }}>
+          <Text style={[styles.heading, { color: c.label }]}>Filters</Text>
           <View style={styles.chips}>
             {FILTERS.map((f) => (
               <Pressable
                 key={f.query}
-                onPress={() => setQuery(f.query)}
-                style={({ pressed }) => [styles.chip, { borderColor: c.separator, backgroundColor: pressed ? c.fill : 'transparent' }]}
+                onPress={() => runQuery(f.query)}
+                style={({ pressed }) => [styles.chip, { borderColor: c.inputBorder, backgroundColor: pressed ? c.fill : 'transparent' }]}
                 accessibilityRole="button"
                 accessibilityHint={`Searches for ${f.query}`}
               >
@@ -82,7 +122,7 @@ export default function SearchScreen() {
           {state.recentSearches.length > 0 ? (
             <>
               <View style={styles.recentHead}>
-                <Text style={[styles.heading, { color: c.secondaryLabel, marginTop: 0 }]}>Recent</Text>
+                <Text style={[styles.heading, { color: c.label, marginTop: 0 }]}>Recent</Text>
                 <Pressable onPress={clearRecentSearches} hitSlop={8} accessibilityRole="button">
                   <Text style={{ color: c.tint, fontSize: 15 }}>Clear</Text>
                 </Pressable>
@@ -90,7 +130,7 @@ export default function SearchScreen() {
               {state.recentSearches.map((q) => (
                 <Pressable
                   key={q}
-                  onPress={() => setQuery(q)}
+                  onPress={() => runQuery(q)}
                   style={({ pressed }) => [styles.recent, pressed && { backgroundColor: c.fill }]}
                   accessibilityRole="button"
                 >
@@ -113,7 +153,7 @@ export default function SearchScreen() {
 const styles = StyleSheet.create({
   sep: { height: StyleSheet.hairlineWidth, marginLeft: 68 },
   count: { fontSize: 13, paddingHorizontal: 16, paddingVertical: 8 },
-  heading: { fontSize: 13, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.3, paddingHorizontal: 16, marginTop: 16, marginBottom: 10 },
+  heading: { fontSize: 15, fontWeight: '600', paddingHorizontal: 16, marginTop: 16, marginBottom: 10 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16 },
   chip: { borderWidth: 1, borderRadius: 18, paddingHorizontal: 14, minHeight: 36, justifyContent: 'center' },
   recentHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingRight: 16, marginTop: 24, marginBottom: 4 },

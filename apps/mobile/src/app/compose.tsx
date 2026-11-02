@@ -1,8 +1,9 @@
 import * as DocumentPicker from 'expo-document-picker';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
-import { ActionSheetIOS, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActionSheetIOS, Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { TextBox } from '@/components/form';
 import { Icon } from '@/components/icon';
 import { fileSize, parseAddresses, replaceTrailingToken, trailingToken } from '@/mail/format';
 import { contacts } from '@/mail/selectors';
@@ -20,6 +21,7 @@ import {
 } from '@/mail/store';
 import type { Draft } from '@/mail/types';
 import { useColors } from '@/theme/colors';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { ToolbarIcon } from '@/theme/icons';
 
 const isIOS = process.env.EXPO_OS === 'ios';
@@ -202,7 +204,7 @@ export default function Compose() {
     <>
       <View style={[styles.field, { borderBottomColor: c.separator }]}>
         <Text style={[styles.label, { color: c.secondaryLabel }]}>{label}</Text>
-        <TextInput
+        <TextBox
           value={draft[field]}
           onChangeText={(v) => update({ [field]: v })}
           onFocus={() => setFocused(field)}
@@ -213,8 +215,10 @@ export default function Compose() {
           textContentType="emailAddress"
           autoComplete="email"
           autoFocus={field === 'to' && !draft.to && draft.mode !== 'reply' && draft.mode !== 'replyAll'}
-          style={[styles.input, { color: c.label }]}
-          placeholderTextColor={c.tertiaryLabel}
+          boxStyle={{ flex: 1 }}
+          placeholderTextColor={c.secondaryLabel}
+          selectionColor={c.tint}
+          cursorColor={c.tint}
           accessibilityLabel={label}
           returnKeyType="next"
         />
@@ -273,11 +277,11 @@ export default function Compose() {
         <Stack.Toolbar.Button icon={ToolbarIcon.send} variant="prominent" accessibilityLabel="Send" onPress={() => confirmAndSend()} />
       </Stack.Toolbar>
 
-      <ScrollView
+      <KeyboardAwareScrollView
+        bottomOffset={24}
         style={{ backgroundColor: c.background }}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
-        automaticallyAdjustKeyboardInsets
         contentInsetAdjustmentBehavior="automatic"
       >
         {state.accounts.length > 1 ? (
@@ -296,12 +300,14 @@ export default function Compose() {
         {showCc ? renderField('bcc', 'Bcc') : null}
 
         <View style={[styles.field, { borderBottomColor: c.separator }]}>
-          <TextInput
+          <TextBox
             value={draft.subject}
             onChangeText={(subject) => update({ subject })}
             placeholder="Subject"
-            placeholderTextColor={c.tertiaryLabel}
-            style={[styles.input, { color: c.label }]}
+            placeholderTextColor={c.secondaryLabel}
+          selectionColor={c.tint}
+          cursorColor={c.tint}
+            boxStyle={{ flex: 1 }}
             returnKeyType="next"
             onSubmitEditing={() => bodyRef.current?.focus()}
             accessibilityLabel="Subject"
@@ -332,32 +338,35 @@ export default function Compose() {
           </View>
         ) : null}
 
-        <TextInput
+        <TextBox
           ref={bodyRef}
           value={draft.body}
           onChangeText={(body) => update({ body })}
           placeholder="Compose email"
-          placeholderTextColor={c.tertiaryLabel}
+          placeholderTextColor={c.secondaryLabel}
+          selectionColor={c.tint}
+          cursorColor={c.tint}
           multiline
           scrollEnabled={false}
           textAlignVertical="top"
           autoFocus={draft.mode === 'reply' || draft.mode === 'replyAll'}
+          boxStyle={{ margin: 16 }}
           style={[styles.body, { color: c.label }]}
           accessibilityLabel="Message"
         />
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  field: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 48, paddingHorizontal: 16, borderBottomWidth: StyleSheet.hairlineWidth },
+  field: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 48, paddingHorizontal: 16, paddingTop: 12 },
   label: { fontSize: 16, width: 44 },
-  input: { flex: 1, fontSize: 16, paddingVertical: 12 },
+  input: { flex: 1, minWidth: 0, minHeight: 48, fontSize: 16, paddingVertical: 12 },
   error: { fontSize: 14, paddingHorizontal: 16, paddingVertical: 8 },
   suggestions: { borderBottomWidth: StyleSheet.hairlineWidth },
   suggestion: { paddingHorizontal: 16, paddingLeft: 68, paddingVertical: 10 },
   attachments: { padding: 16, paddingBottom: 0, gap: 8 },
   attachment: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: StyleSheet.hairlineWidth, borderRadius: 10, padding: 10 },
-  body: { fontSize: 16, lineHeight: 23, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 120, minHeight: 320 },
+  body: { fontSize: 16, lineHeight: 23, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 24, minHeight: 320 },
 });

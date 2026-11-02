@@ -13,20 +13,24 @@
     "tunnel": "sh -c 'set -a; . ./.env; set +a; TUNNEL_TOKEN=\"$CLOUDFLARE_TUNNEL_TOKEN\" exec cloudflared tunnel --no-autoupdate run'",
     "db:up": "sh scripts/db-up.sh",
     "db:down": "docker compose -f docker-compose.dev.yml down",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:security": "tsx --env-file=.env scripts/security-test.ts"
   },
   "dependencies": {
     "@better-auth/expo": "1.7.14",
+    "@better-auth/passkey": "1.7.14",
     "@hono/node-server": "2.1.5",
+    "@sendraa/cloudflare": "workspace:*",
+    "@sendraa/mail-worker": "workspace:*",
     "better-auth": "1.7.14",
     "hono": "4.13.16",
+    "nodemailer": "10.3.1",
     "pg": "8.23.1",
-    "zod": "4.6.7",
-    "@sendraa/cloudflare": "workspace:*",
-    "@sendraa/mail-worker": "workspace:*"
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@types/node": "26.6.6",
+    "@types/nodemailer": "8.0.2",
     "@types/pg": "8.23.1",
     "tsx": "4.23.15",
     "typescript": "6.0.3"

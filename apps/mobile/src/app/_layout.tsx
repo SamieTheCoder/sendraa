@@ -1,33 +1,44 @@
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View, useColorScheme } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Platform, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { Button } from '@/components/form';
 import { UndoBar } from '@/components/undo-bar';
 import { authClient } from '@/lib/auth-client';
 import { loadMe, useMe } from '@/lib/workspace';
-import { useColors, useTintHex } from '@/theme/colors';
+import { useColors, useScheme, useTintHex } from '@/theme/colors';
 
 void SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  const scheme = useColorScheme();
+  const scheme = useScheme();
   const tint = useTintHex();
   const c = useColors();
   const base = scheme === 'dark' ? DarkTheme : DefaultTheme;
-  const theme = { ...base, colors: { ...base.colors, primary: tint } };
+  // iOS colours are dynamic system colours already; Android needs the palette's plain hex values so
+  // navigator-drawn text and surfaces match the screens in both light and dark mode.
+  const theme = Platform.OS === 'android'
+    ? { ...base, colors: { ...base.colors, primary: tint, background: c.background as string, card: c.background as string, text: c.label as string, border: c.separator as string } }
+    : { ...base, colors: { ...base.colors, primary: tint } };
 
   const { data: session, isPending } = authClient.useSession();
+  // better-auth refetches the session whenever the app becomes active, and while signed out that
+  // refetch reports isPending again. Password autofill and Face ID briefly make the app inactive,
+  // so gating on isPending every time unmounted the sign-in screen and wiped the form.
+  // Only the first session check may hold the app on the spinner.
+  const [sessionKnown, setSessionKnown] = useState(false);
+  if (!isPending && !sessionKnown) setSessionKnown(true);
   const me = useMe(session?.user.id);
   // A font failure falls back to the system face rather than blocking launch.
   const [fontsLoaded, fontError] = useFonts({ LeagueGothic: require('../../assets/fonts/LeagueGothic.ttf') });
   const signedIn = Boolean(session);
   const ready = me.status === 'ready';
-  const hasWorkspace = ready && me.me.workspaces.length > 0;
-  const deciding = isPending || (!fontsLoaded && !fontError) || (signedIn && (me.status === 'idle' || me.status === 'loading'));
+  const hasWorkspace = signedIn && ready && me.me.workspaces.length > 0;
+  const deciding = !sessionKnown || (!fontsLoaded && !fontError) || (signedIn && (me.status === 'idle' || me.status === 'loading'));
 
   useEffect(() => {
     if (!deciding) void SplashScreen.hideAsync();
@@ -49,9 +60,12 @@ export default function RootLayout() {
   }
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: c.background }}>
+      <StatusBar barStyle={scheme === 'dark' ? 'light-content' : 'dark-content'} />
+      {/* Navigators own safe-area spacing; the keyboard provider must not add it again. */}
+      <KeyboardProvider statusBarTranslucent navigationBarTranslucent preserveEdgeToEdge>
       <ThemeProvider value={theme}>
-        <Stack screenOptions={{ headerTintColor: tint, headerBackButtonDisplayMode: 'minimal' }}>
+        <Stack screenOptions={{ headerTintColor: tint, headerTitleStyle: { color: c.label }, headerStyle: { backgroundColor: c.background }, headerTransparent: false, headerShadowVisible: false, headerBackButtonDisplayMode: 'minimal' }}>
           <Stack.Protected guard={!signedIn}>
             <Stack.Screen name="sign-in" options={{ headerShown: false }} />
           </Stack.Protected>
@@ -75,14 +89,19 @@ export default function RootLayout() {
             <Stack.Screen name="people/index" options={{ title: 'People and access' }} />
             <Stack.Screen name="people/invite" options={{ presentation: 'modal', title: 'Invite someone' }} />
             <Stack.Screen name="setup" options={{ title: 'Email setup' }} />
+            <Stack.Screen name="folders" options={{ presentation: 'transparentModal', headerShown: false, animation: 'slide_from_left', contentStyle: { backgroundColor: 'transparent' } }} />
+            <Stack.Screen name="account-security" options={{ title: 'Account security' }} />
           </Stack.Protected>
 
           <Stack.Screen name="index" options={{ headerShown: false }} />
           {/* Invite links open whether or not someone is signed in. */}
           <Stack.Screen name="invite/[token]" options={{ title: 'Invitation' }} />
+          <Stack.Screen name="legal" options={{ title: 'Legal' }} />
+          <Stack.Screen name="forgot-password" options={{ title: 'Reset password' }} />
         </Stack>
         {hasWorkspace ? <UndoBar /> : null}
       </ThemeProvider>
+      </KeyboardProvider>
     </GestureHandlerRootView>
   );
 }

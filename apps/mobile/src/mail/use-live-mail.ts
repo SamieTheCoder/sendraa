@@ -24,7 +24,7 @@ export function useLiveMail() {
     connectWorkspace(workspace.id)
       .then(() => setConnected(true))
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load your mailboxes.'));
-  }, [ready, workspace?.id]);
+  }, [ready, workspace]);
 
   const live = connected && accounts.some((a) => a.id === activeAccountId && a.live);
 
@@ -40,6 +40,8 @@ export function useLiveMail() {
   }, [live, activeAccountId]);
 
   useEffect(() => {
+    // The network callback, not the effect itself, updates state.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void refresh();
     const sub = AppState.addEventListener('change', (s) => s === 'active' && void refresh());
     return () => sub.remove();

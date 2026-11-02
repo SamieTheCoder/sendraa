@@ -175,6 +175,7 @@ const run: Record<StepId, (ctx: Ctx) => Promise<Record<string, unknown>>> = {
     await workerCall(tenant, 'PUT', `/v1/mailboxes/${mailbox!.id}`, { address, displayName: 'Admin' });
     // The owner already reaches every mailbox through the tenant binding; this makes admin@ theirs explicitly.
     await grant(pool, tenant.id, mailboxResource(tenant.id, mailbox!.id), 'roles/mailUser', tenant.cloudflare_user_id, tenant.cloudflare_user_id);
+    await query('insert into login_alias(address, user_id, mailbox_id) values ($1, $2, $3) on conflict do nothing', [address, tenant.cloudflare_user_id, mailbox!.id]);
     return { mailboxId: mailbox!.id, address };
   },
 

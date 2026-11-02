@@ -94,10 +94,11 @@ export default function MailList() {
 
   return (
     <>
-      <Stack.Screen options={{ title: selecting ? `${selected.length} selected` : title, headerLargeTitle: !selecting }} />
+      <Stack.Screen options={{ title: selecting ? `${selected.length} selected` : title }} />
 
       <Stack.Toolbar placement="left">
-        <Stack.Toolbar.Menu icon={ToolbarIcon.menu} hidden={selecting} accessibilityLabel="Folders">
+        <Stack.Toolbar.Button icon={ToolbarIcon.menu} hidden={selecting || isIOS} accessibilityLabel="Folders and mailboxes" onPress={() => router.push('/folders')} />
+        <Stack.Toolbar.Menu icon={ToolbarIcon.menu} hidden={selecting || !isIOS} accessibilityLabel="Folders">
           <Stack.Toolbar.Menu inline title={account.address}>
             {FOLDERS.map((f) => {
               const count = f.id === 'drafts' ? draftsForAccount(state).length : unreadCount(state, f.id);
@@ -106,10 +107,9 @@ export default function MailList() {
                   key={f.id}
                   icon={isIOS ? f.ios : undefined}
                   isOn={folder === f.id}
-                  subtitle={count > 0 ? String(count) : undefined}
                   onPress={() => setFolder(f.id)}
                 >
-                  {f.title}
+                  {count > 0 ? `${f.title} · ${count}` : f.title}
                 </Stack.Toolbar.MenuAction>
               );
             })}

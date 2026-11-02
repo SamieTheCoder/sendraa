@@ -1,11 +1,12 @@
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { router, Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Button, ErrorText, Field } from '@/components/form';
 import { Icon } from '@/components/icon';
 import { ApiError, api } from '@/lib/api';
-import { authClient } from '@/lib/auth-client';
+import { authClient, authReturnURL } from '@/lib/auth-client';
 import { getMe, loadMe } from '@/lib/workspace';
 import { useColors } from '@/theme/colors';
 
@@ -43,10 +44,11 @@ export default function Onboarding() {
 
   useEffect(() => {
     if (!accountId) return;
-    setZones(null);
+    let current = true;
     api<{ zones: Zone[] }>(`/v1/cloudflare/zones?accountId=${accountId}`)
-      .then(({ zones: list }) => setZones(list))
-      .catch((err) => fail(err, 'Could not read the domains in that account.'));
+      .then(({ zones: list }) => { if (current) setZones(list); })
+      .catch((err) => { if (current) fail(err, 'Could not read the domains in that account.'); });
+    return () => { current = false; };
   }, [accountId]);
 
   const create = async () => {
@@ -66,11 +68,11 @@ export default function Onboarding() {
     }
   };
 
-  const reconnect = () => authClient.signIn.social({ provider: 'cloudflare' as never, callbackURL: '/' });
+  const reconnect = () => authClient.signIn.social({ provider: 'cloudflare' as never, callbackURL: authReturnURL('/') });
 
   if (!me?.canCreateWorkspace) {
     return (
-      <ScrollView style={{ backgroundColor: c.groupedBackground }} contentContainerStyle={styles.wrap} contentInsetAdjustmentBehavior="automatic">
+      <KeyboardAwareScrollView bottomOffset={24} style={{ backgroundColor: c.groupedBackground }} contentContainerStyle={styles.wrap} contentInsetAdjustmentBehavior="automatic">
         <Stack.Screen options={{ title: 'Welcome', headerShown: true }} />
         <Text style={[styles.title, { color: c.label }]} accessibilityRole="header">
           You are not in a workspace yet
@@ -79,16 +81,16 @@ export default function Onboarding() {
           Ask your workspace admin to invite {me?.user.email ?? 'you'}, then open the link in the invite. Admins who want to set up a new workspace sign in with Cloudflare.
         </Text>
         <Button variant="plain" title="Sign out" onPress={() => authClient.signOut()} />
-      </ScrollView>
+      </KeyboardAwareScrollView>
     );
   }
 
   const account = accounts?.find((a) => a.id === accountId);
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: c.groupedBackground }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <View style={{ flex: 1, backgroundColor: c.groupedBackground }}>
       <Stack.Screen options={{ title: 'Set up Sendraa', headerShown: true }} />
-      <ScrollView contentContainerStyle={styles.wrap} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled">
+      <KeyboardAwareScrollView bottomOffset={24} contentContainerStyle={styles.wrap} contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled">
         <Text style={[styles.body, { color: c.secondaryLabel }]}>
           A workspace holds your domains, mailboxes and team. You will be its owner.
         </Text>
@@ -104,7 +106,7 @@ export default function Onboarding() {
                 {accounts.map((a, i) => (
                   <Pressable
                     key={a.id}
-                    onPress={() => setAccountId(a.id)}
+                    onPress={() => { if (a.id !== accountId) { setZones(null); setError(null); setAccountId(a.id); } }}
                     accessibilityRole="radio"
                     accessibilityState={{ checked: a.id === accountId }}
                     style={({ pressed }) => [styles.row, i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: c.separator }, pressed && { opacity: 0.6 }]}
@@ -119,7 +121,7 @@ export default function Onboarding() {
                 <Text style={[styles.rowText, { color: c.label }]} numberOfLines={1}>{account.name}</Text>
               </View>
             ) : null}
-            <Text style={[styles.caption, { color: c.tertiaryLabel }]}>Your mail, database and storage are created in this account. Sendraa never keeps a copy.</Text>
+            <Text style={[styles.caption, { color: c.secondaryLabel }]}>Mail is stored in this Cloudflare account. Sendraa securely retrieves it when you use the app.</Text>
 
             {accountId ? (
               <>
@@ -138,7 +140,7 @@ export default function Onboarding() {
                     ))}
                   </View>
                 )}
-                <Text style={[styles.caption, { color: c.tertiaryLabel }]}>Next, choose which domain gets email. Sendraa sets it up for you.</Text>
+                <Text style={[styles.caption, { color: c.secondaryLabel }]}>Next, choose one domain for email. This version supports one connected domain per workspace.</Text>
               </>
             ) : null}
           </View>
@@ -148,8 +150,8 @@ export default function Onboarding() {
         {needsReauth ? <Button title="Sign in with Cloudflare again" onPress={reconnect} /> : null}
         <Button variant="brand" title="Create workspace" onPress={create} loading={busy} disabled={viaCloudflare && !accountId} />
         <Button variant="plain" title="Sign out" onPress={() => authClient.signOut()} />
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
+    </View>
   );
 }
 

@@ -1,6 +1,8 @@
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { TextBox } from '@/components/form';
 import { Icon } from '@/components/icon';
 import { Row, Section } from '@/components/grouped-list';
 import { createLabel, deleteLabel, renameLabel, useMail } from '@/mail/store';
@@ -31,18 +33,18 @@ export default function LabelsScreen() {
     ]);
 
   return (
-    <ScrollView contentInsetAdjustmentBehavior="automatic" style={{ backgroundColor: c.groupedBackground }} keyboardShouldPersistTaps="handled">
+    <KeyboardAwareScrollView bottomOffset={24} contentInsetAdjustmentBehavior="automatic" style={{ backgroundColor: c.groupedBackground }} keyboardShouldPersistTaps="handled">
       <Section title="Your labels" footer="Tap a label to rename it.">
         {state.labels.length === 0 ? <Row title="No labels yet" /> : null}
         {state.labels.map((l) =>
           editing === l.id ? (
             <View key={l.id} style={styles.editRow}>
               <View style={[styles.dot, { backgroundColor: l.color }]} />
-              <TextInput
+              <TextBox
                 value={draftName}
                 onChangeText={setDraftName}
                 autoFocus
-                style={[styles.input, { color: c.label }]}
+                boxStyle={styles.box}
                 returnKeyType="done"
                 onSubmitEditing={() => {
                   renameLabel(l.id, draftName);
@@ -72,16 +74,16 @@ export default function LabelsScreen() {
       </Section>
 
       <Section title="New label">
-        <View style={styles.editRow}>
-          <TextInput
+        <View style={styles.newRow}>
+          <TextBox
             value={name}
             onChangeText={(v) => {
               setName(v);
               setError(null);
             }}
             placeholder="Label name"
-            placeholderTextColor={c.tertiaryLabel}
-            style={[styles.input, { color: c.label }]}
+            invalid={Boolean(error)}
+            boxStyle={styles.box}
             returnKeyType="done"
             onSubmitEditing={add}
             accessibilityLabel="New label name"
@@ -92,13 +94,14 @@ export default function LabelsScreen() {
         </View>
       </Section>
       {error ? <Text style={[styles.error, { color: c.red }]}>{error}</Text> : null}
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   dot: { width: 12, height: 12, borderRadius: 6 },
-  editRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, minHeight: 46 },
-  input: { flex: 1, fontSize: 17, paddingVertical: 10 },
+  editRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 8, minHeight: 46 },
+  newRow: { flexDirection: 'row', alignItems: 'center', gap: 16, padding: 16 },
+  box: { flex: 1 },
   error: { fontSize: 13, marginHorizontal: 32, marginTop: 6 },
 });

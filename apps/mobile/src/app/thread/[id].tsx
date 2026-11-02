@@ -49,13 +49,14 @@ export default function ThreadScreen() {
   useEffect(() => {
     if (!thread?.remote || thread.remote.loaded) return;
     loadThread(thread.id).catch((err) => setLoadError(err instanceof Error ? err.message : 'Could not load this conversation.'));
-  }, [thread?.id, thread?.remote?.loaded]);
+  }, [thread?.id, thread?.remote]);
 
-  // Expand the newest message once the real messages replace the summary.
-  const lastId = thread?.messages[thread.messages.length - 1]?.id;
+  // The newest message is already expanded by the row expression below.
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    if (lastId) setExpanded((e) => (e.has(lastId) ? e : new Set([...e, lastId])));
-  }, [lastId]);
+    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
 
   if (!thread) {
     return (
@@ -76,7 +77,7 @@ export default function ThreadScreen() {
   const last = thread.messages[thread.messages.length - 1]!;
   const recipients = new Set([last.from, ...last.to, ...last.cc].map((a) => a.address.toLowerCase()).filter((a) => a !== me));
   const canReplyAll = recipients.size > 1;
-  const isSnoozed = thread.snoozedUntil !== null && new Date(thread.snoozedUntil).getTime() > Date.now();
+  const isSnoozed = thread.snoozedUntil !== null && new Date(thread.snoozedUntil).getTime() > now;
   const scheduled = thread.location === 'scheduled';
 
   const reply = (mode: 'reply' | 'replyAll' | 'forward') =>

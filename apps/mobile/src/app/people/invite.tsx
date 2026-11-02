@@ -1,7 +1,8 @@
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import * as Clipboard from 'expo-clipboard';
 import { router, Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { Share, StyleSheet, Text, View } from 'react-native';
 
 import { Button, ErrorText, Field } from '@/components/form';
 import { Row, Section } from '@/components/grouped-list';
@@ -19,7 +20,7 @@ export default function InvitePerson() {
   const [mailboxes, setMailboxes] = useState<Mailbox[]>([]);
   const [email, setEmail] = useState('');
   const [scope, setScope] = useState<string>('workspace');
-  const [role, setRole] = useState('roles/mailUser');
+  const [selectedRole, setRole] = useState('roles/mailUser');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [link, setLink] = useState<string | null>(null);
@@ -35,9 +36,7 @@ export default function InvitePerson() {
   // Only offer roles this admin is allowed to hand out on the chosen scope.
   const offered = roles.filter((r) => r.grantableOn.includes(kind) && r.permissions.every((p) => p.startsWith('mail.') || held.has(p)) && (r.id !== 'roles/owner' || workspace?.roles.includes('roles/owner')));
 
-  useEffect(() => {
-    if (offered.length && !offered.some((r) => r.id === role)) setRole(offered[0]!.id);
-  }, [offered, role]);
+  const role = offered.some((r) => r.id === selectedRole) ? selectedRole : (offered[0]?.id ?? selectedRole);
 
   const send = async () => {
     if (!workspace) return;
@@ -56,7 +55,7 @@ export default function InvitePerson() {
 
   if (link) {
     return (
-      <ScrollView contentInsetAdjustmentBehavior="automatic" style={{ backgroundColor: c.groupedBackground }} contentContainerStyle={styles.wrap}>
+      <KeyboardAwareScrollView bottomOffset={24} contentInsetAdjustmentBehavior="automatic" style={{ backgroundColor: c.groupedBackground }} contentContainerStyle={styles.wrap}>
         <Stack.Screen options={{ title: 'Invite ready' }} />
         <Text style={[styles.title, { color: c.label }]}>Send this link to {email.trim()}</Text>
         <Text style={[styles.body, { color: c.secondaryLabel }]}>
@@ -70,12 +69,12 @@ export default function InvitePerson() {
         <Button variant="brand" title="Share link" onPress={() => Share.share({ message: `You have been invited to ${workspace?.name} on Sendraa: ${link}` })} />
         <Button variant="plain" title="Copy link" onPress={() => Clipboard.setStringAsync(link)} />
         <Button variant="plain" title="Done" onPress={() => router.back()} />
-      </ScrollView>
+      </KeyboardAwareScrollView>
     );
   }
 
   return (
-    <ScrollView contentInsetAdjustmentBehavior="automatic" style={{ backgroundColor: c.groupedBackground }} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 48 }}>
+    <KeyboardAwareScrollView bottomOffset={24} contentInsetAdjustmentBehavior="automatic" style={{ backgroundColor: c.groupedBackground }} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 48 }}>
       <Stack.Screen options={{ title: 'Invite someone' }} />
       <View style={styles.fieldWrap}>
         <Field label="Their email" value={email} onChangeText={setEmail} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" autoFocus placeholder="priya@gmail.com" />
@@ -98,7 +97,7 @@ export default function InvitePerson() {
         <ErrorText>{error}</ErrorText>
         <Button variant="brand" title="Create invite" onPress={send} loading={busy} disabled={!email.trim() || offered.length === 0} />
       </View>
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 

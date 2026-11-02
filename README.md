@@ -1,56 +1,37 @@
-# Welcome to your Expo app 👋
+# Sendraa
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Professional email on your own domain, with mail stored in your own Cloudflare account. Expo SDK 58 for iOS and Android; a Hono/Better Auth control plane; a small Cloudflare Email Worker backed by D1 and R2.
 
-## Get started
+## Run locally
 
-1. Install dependencies
-
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **src/app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
-```bash
-npm run reset-project
+```sh
+pnpm install
+pnpm --filter @sendraa/api db:up
+pnpm --filter @sendraa/api migrate
+pnpm dev
 ```
 
-This command will move the starter code to the **example** directory and create a blank **src/app** directory where you can start developing.
+Copy `services/api/.env.example` to `services/api/.env` and configure it first. Set `EXPO_PUBLIC_API_URL` in `apps/mobile/.env` to the same HTTPS origin as `BETTER_AUTH_URL`; Cloudflare OAuth must return to that host. Existing accounts open their existing workspace. New Cloudflare users create a workspace and connect a domain.
 
-### Other setup steps
+## Sign-in and account security
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+Cloudflare is the first sign-in/sign-up option. After domain provisioning, owners can set a password, verify an external recovery address and register a passkey on a supported build. Owners may sign in with their Cloudflare account email or their initial `admin@domain` alias. Team members use their invited email. Shared mailboxes are not sign-in identities.
 
-## Learn more
+See [account security setup](docs/account-security.md) for Gmail SMTP, native passkeys and release requirements. Privacy Policy and Terms are available without signing in, in the app and at `/legal/privacy` and `/legal/terms` on the API.
 
-To learn more about developing your project with Expo, look at the following resources:
+## Deploy the mail Worker
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2FSamieTheCoder%2Fsendraa%2Ftree%2Fmain%2Fworkers%2Fsendraa-mail)
 
-## Join the community
+This official button deploys the **mail Worker**, not the mobile application or Postgres control plane, and does not sign you into Sendraa. Normal users should connect their domain in the app; Sendraa provisions its Worker, database, storage, routing and mailbox together. The button is for developers managing a standalone deployment; follow [the Worker setup](workers/sendraa-mail/README.md). It uses the published `main` branch, so local changes must be pushed before the button includes them.
 
-Join our community of developers creating universal apps.
+## Checks
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+```sh
+pnpm lint
+pnpm typecheck
+pnpm --filter @sendraa/mobile exec tsc --noEmit
+pnpm --filter @sendraa/api test:security
+```
+
+`server/` is the legacy SMTP prototype; active API work belongs in `services/api/`.
