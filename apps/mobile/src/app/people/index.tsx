@@ -1,3 +1,4 @@
+import { haptic } from '@/lib/haptics';
 import { router, Stack, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, RefreshControl, ScrollView, StyleSheet, Text } from 'react-native';
@@ -30,7 +31,7 @@ export default function People() {
       const [m, i, b] = await Promise.all([
         api<{ members: Member[] }>(`/v1/tenants/${workspace.id}/members`),
         api<{ invites: Invite[] }>(`/v1/tenants/${workspace.id}/invites`),
-        api<{ mailboxes: Mailbox[] }>(`/v1/tenants/${workspace.id}/mailboxes`),
+        api<{ mailboxes: Mailbox[] }>(`/v1/tenants/${workspace.id}/mailboxes${workspace.permissions.includes('mailboxes.update') ? '?manage=true' : ''}`),
       ]);
       setMembers(m.members);
       setInvites(i.invites);
@@ -93,7 +94,7 @@ export default function People() {
       <Stack.Screen options={{ title: 'People and access' }} />
       {canInvite ? (
         <Stack.Toolbar placement="right">
-          <Stack.Toolbar.Button icon={ToolbarIcon.compose} accessibilityLabel="Invite someone" onPress={() => router.push('/people/invite')} />
+          <Stack.Toolbar.Button icon={ToolbarIcon.compose} accessibilityLabel="Invite someone" onPress={() => { haptic(); return (() => router.push('/people/invite'))(); }} />
         </Stack.Toolbar>
       ) : null}
       <ScrollView

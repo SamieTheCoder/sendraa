@@ -1,7 +1,8 @@
-import * as Haptics from 'expo-haptics';
+import { haptic } from '@/lib/haptics';
 import { router } from 'expo-router';
 import { useEffect, useRef } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { HapticPressable as Pressable } from '@/components/haptic-pressable';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
 import ReanimatedSwipeable, { SwipeDirection, type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 
@@ -127,7 +128,7 @@ export function ThreadRow({ thread, state, selecting, selected, onToggleSelect, 
       onPress={open}
       onLongPress={() => {
         swipeRef.current?.reset();
-        Haptics.selectionAsync();
+        haptic();
         onToggleSelect(thread.id);
       }}
       style={({ pressed }) => [styles.row, { backgroundColor: selected ? c.fill : pressed ? c.fill : c.background }]}
@@ -159,7 +160,7 @@ export function ThreadRow({ thread, state, selecting, selected, onToggleSelect, 
           </Text>
           <Pressable
             onPress={() => {
-              Haptics.selectionAsync();
+              haptic();
               setStarred([thread.id], !thread.starred);
             }}
             hitSlop={10}
@@ -218,7 +219,7 @@ export function ThreadRow({ thread, state, selecting, selected, onToggleSelect, 
       overshootFriction={8}
       renderLeftActions={leading ? (progress) => <SwipeReveal progress={progress}>{actionView(leading, 'flex-start')}</SwipeReveal> : undefined}
       renderRightActions={trailing ? (progress) => <SwipeReveal progress={progress}>{actionView(trailing, 'flex-end')}</SwipeReveal> : undefined}
-      onSwipeableWillOpen={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)}
+      onSwipeableWillOpen={() => haptic('impact')}
       onSwipeableOpen={(direction) => {
         if (selecting) return;
         // RIGHT means the row moved right, revealing the leading actions.

@@ -1,13 +1,15 @@
 import { expo } from '@better-auth/expo';
 import { betterAuth } from 'better-auth';
 import { APIError, createAuthMiddleware } from 'better-auth/api';
-import { genericOAuth } from 'better-auth/plugins';
+import { genericOAuth, multiSession } from 'better-auth/plugins';
 import { passkey } from '@better-auth/passkey';
+import { androidPasskeyOrigins } from './android-association.js';
 
 import { CF_OAUTH, CloudflareApi, onboardingScopes } from '@sendraa/cloudflare';
 
+import { rememberDeviceSession } from './device-sessions.js';
 import { one, pool } from './db.js';
-import { cloudflareConfigured, devAdminSignup, env, isDev, recoveryConfigured } from './env.js';
+import { androidSigningFingerprints, cloudflareConfigured, devAdminSignup, env, isDev, recoveryConfigured } from './env.js';
 import { findOpenInvite } from './invites.js';
 import { sendPasswordReset } from './security-mail.js';
 import { crossSiteCookies, trustedWebOrigins } from './web-origins.js';
@@ -79,11 +81,14 @@ export const auth = betterAuth({
     before: createAuthMiddleware(async (ctx) => {
       if (ctx.path === '/sign-in/email' || ctx.path === '/request-password-reset') {
         const email = String(ctx.body?.email ?? '').trim().toLowerCase();
+        if(await one('select 1 from mailbox m join "user" u on u.id=m.account_user_id where lower(u.email)=$1 and m.deleting_at is not null',[email])) {
+          throw new APIError('UNAUTHORIZED',{message:'This work account is being deleted.'});
+        }
         const alias = await one<{ email: string }>(
           `select u.email from login_alias a join "user" u on u.id = a.user_id
            join mailbox m on m.id = a.mailbox_id
            join tenant_member tm on tm.tenant_id = m.tenant_id and tm.user_id = u.id
-           where a.address = $1 and not m.shared
+           where a.address = $1 and not m.shared and m.deleting_at is null and m.owner_user_id=u.id
            and not exists (select 1 from "user" direct where lower(direct.email) = $1)`, [email],
         );
         if (alias && ctx.body) ctx.body.email = alias.email;
@@ -93,6 +98,9 @@ export const auth = betterAuth({
       const token = ctx.headers?.get(INVITE_HEADER) ?? '';
       if (!token && devAdminSignup) return;
       const invite = token ? await findOpenInvite(token) : null;
+      if (invite?.separate_account) {
+        throw new APIError('FORBIDDEN', { message: 'Create your work login by accepting the mailbox invitation in Sendraa.' });
+      }
       const email = String((ctx.body as { email?: unknown } | undefined)?.email ?? '').toLowerCase();
       if (!invite || invite.email.toLowerCase() !== email) {
         throw new APIError('FORBIDDEN', { message: 'Accounts are created from an invite. Ask your workspace admin for one.' });
@@ -100,11 +108,14 @@ export const auth = betterAuth({
     }),
   },
   plugins: [
+    rememberDeviceSession(),
+    multiSession({ maximumSessions: 5 }),
+    // Serialize all session cookies into the native OAuth return after multi-session adds them.
     expo(),
     ...(env.PASSKEY_RP_ID ? [passkey({
       rpID: env.PASSKEY_RP_ID,
       rpName: 'Sendraa',
-      origin: [new URL(env.BETTER_AUTH_URL).origin, ...env.ANDROID_SHA256_FINGERPRINTS.split(',').filter(Boolean).map((fingerprint) => `android:apk-key-hash:${Buffer.from(fingerprint.replaceAll(':', ''), 'hex').toString('base64url')}`)],
+      origin: [`https://${env.PASSKEY_RP_ID}`, new URL(env.BETTER_AUTH_URL).origin, ...androidPasskeyOrigins(androidSigningFingerprints)],
     })] : []),
     ...(cloudflareConfigured
       ? [

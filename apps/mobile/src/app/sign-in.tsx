@@ -1,8 +1,9 @@
-import { Link, useLocalSearchParams } from 'expo-router';
+import { Link, Redirect, router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState, type ComponentRef } from 'react';
 import { ActivityIndicator, Platform, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AccountMenu } from '@/components/account-switcher';
 import { AuthBackdrop, WelcomeFlow } from '@/components/welcome-flow';
 import { mailStorage } from '@/mail/persistence';
 import { CloudflareButton } from '@/components/cloudflare-button';
@@ -18,9 +19,12 @@ import { Brand, useColors } from '@/theme/colors';
 type Providers = { cloudflare: boolean; password: boolean; devSignup?: boolean; recovery?: boolean; passkey?: { ios: boolean; android: boolean } };
 export default function SignIn() {
   const c = useColors();
-  const params = useLocalSearchParams<{ error?: string }>();
+  const params = useLocalSearchParams<{ error?: string; invite?: string; email?: string; add?: string; from?: string }>();
+  const adding = params.add === '1';
+  const invite = typeof params.invite === 'string' && /^[A-Za-z0-9_-]{43}$/.test(params.invite) ? params.invite : null;
+  const { data: session } = authClient.useSession();
   const [introduced, setIntroduced] = useState(() => {
-    try { return Boolean(params.error) || mailStorage.getItemSync('sendraa.introduction.v1') === 'done'; } catch { return false; }
+    try { return Boolean(params.error || invite || adding) || mailStorage.getItemSync('sendraa.introduction.v1') === 'done'; } catch { return Boolean(invite); }
   });
   const finishIntroduction = () => {
     try { mailStorage.setItemSync('sendraa.introduction.v1', 'done'); } catch { /* Sign-in still works if local storage is unavailable. */ }
@@ -32,7 +36,7 @@ export default function SignIn() {
   const [focusedField, setFocusedField] = useState<'name' | 'email' | 'password'>('email');
   const [passwordHeight, setPasswordHeight] = useState(80);
   const [actionsHeight, setActionsHeight] = useState(108);
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(invite && typeof params.email === 'string' ? params.email : '');
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
@@ -62,7 +66,7 @@ export default function SignIn() {
     finally { pending.current = false; setBusy(null); }
   };
   const cloudflare = () => run('cloudflare', async () => {
-    const result = await authClient.signIn.social({ provider: 'cloudflare' as never, callbackURL: authReturnURL('/'), errorCallbackURL: authReturnURL('/sign-in') });
+    const result = await authClient.signIn.social({ provider: 'cloudflare' as never, callbackURL: authReturnURL(invite ? `/invite/${invite}` : '/'), errorCallbackURL: authReturnURL(invite ? `/sign-in?invite=${invite}&email=${encodeURIComponent(email)}` : '/sign-in') });
     if (result.error) throw new Error(authError(result.error));
     const session = await authClient.getSession();
     if (!session.data) setError('Sign-in was cancelled or did not finish. Your account has not changed.');
@@ -86,12 +90,15 @@ export default function SignIn() {
   const followingFieldsHeight = focusedField === 'password' ? 0 : (passwordHeight + 14) * (focusedField === 'name' ? 2 : 1);
   // On small screens or with large accessibility text, keep the active field visible first.
   const keyboardClearance = Math.min(24 + actionsHeight + followingFieldsHeight, Math.max(24, screenHeight - insets.top - keyboardHeight - passwordHeight - 24));
-  const title = panel === 'dev' ? 'Create an account' : 'Welcome back';
-  const subtitle = panel === 'dev' ? 'A local account for development.' : 'Sign in to your Sendraa workspace.';
+  const title = adding ? 'Add an account' : panel === 'dev' ? 'Create an account' : invite ? 'Sign in to join' : 'Welcome back';
+  const subtitle = adding ? 'Your other accounts will stay signed in.' : panel === 'dev' ? 'A local account for development.' : invite ? 'Use your existing Sendraa account. Your invitation will open after sign-in.' : 'Sign in to your Sendraa workspace.';
+  if (session && (!adding || session.session.id !== params.from)) return <Redirect href={invite ? { pathname: '/invite/[token]', params: { token: invite } } : '/'} />;
   if (!introduced) return <WelcomeFlow onFinish={finishIntroduction} />;
   return (
     <View style={{ flex: 1, backgroundColor: c.background }}>
       <AuthBackdrop />
+      {adding ? <View style={{paddingTop:insets.top,paddingHorizontal:20}}><Button title="Cancel" variant="plain" onPress={()=>router.replace("/")} disabled={busy!==null}/></View> : null}
+      {!adding?<View style={{paddingTop:insets.top,paddingHorizontal:20}}><AccountMenu label="Use a saved account"/></View>:null}
       {/* Reserve the measured controls below the focused field, not just the caret.
           Keyboard Controller supplies the actual keyboard height, including autofill. */}
       <KeyboardAwareScrollView

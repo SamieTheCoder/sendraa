@@ -61,7 +61,7 @@ try {
   await pool.query('insert into tenant_member(tenant_id,user_id) values ($1,$2)', [tenantId,userId]);
   const domain = (await pool.query('insert into domain(tenant_id,name) values ($1,$2) returning id', [tenantId, `${suffix}.invalid`])).rows[0].id;
   const address = `admin@${suffix}.invalid`;
-  const mailbox = (await pool.query('insert into mailbox(tenant_id,domain_id,address) values ($1,$2,$3) returning id', [tenantId,domain,address])).rows[0].id;
+  const mailbox = (await pool.query('insert into mailbox(tenant_id,domain_id,address,owner_user_id) values ($1,$2,$3,$4) returning id', [tenantId,domain,address,userId])).rows[0].id;
   await pool.query('insert into login_alias(address,user_id,mailbox_id) values ($1,$2,$3)', [address,userId,mailbox]);
   check('admin alias signs in to the same identity', (await call('/api/auth/sign-in/email', { email: address, password: 'another-long-password' })).body.user?.id === userId);
   await pool.query('delete from tenant_member where tenant_id = $1 and user_id = $2', [tenantId,userId]);

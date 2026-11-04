@@ -1,6 +1,7 @@
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { HapticPressable as Pressable } from '@/components/haptic-pressable';
+import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AddressStrip } from '@/components/address-strip';
 import { Avatar } from '@/components/avatar';
@@ -9,7 +10,7 @@ import { Lockup } from '@/components/logo';
 import { Row, Section, SwitchRow } from '@/components/grouped-list';
 import { SWIPE_NAMES } from '@/mail/selectors';
 import { activeAccount, resetSampleData, setActiveAccount, updateSettings, useMail } from '@/mail/store';
-import { authClient } from '@/lib/auth-client';
+import { signOutCurrentAccount } from '@/lib/account-sessions';
 import { ROLE_TITLES, getMe, useActiveWorkspace } from '@/lib/workspace';
 import { useColors } from '@/theme/colors';
 
@@ -57,6 +58,10 @@ export default function SettingsScreen() {
         <Icon ios="chevron.right" android="chevron_right" size={14} color={c.tertiaryLabel} />
       </Pressable>
 
+      <Section title="This device" inset="icon">
+        <Row icon={{ ios: 'bell', android: 'notifications' }} title="Notifications" subtitle="Enable alerts and copy verification codes" value={NOTIFY_NAMES[s.notifications]} navigates onPress={() => router.push('/notifications')} />
+      </Section>
+
       {workspace ? (
         <Section title="Workspace" inset="icon">
           <Row
@@ -75,6 +80,8 @@ export default function SettingsScreen() {
             />
           ) : null}
           {canManagePeople ? <Row icon={{ ios: 'person.2', android: 'group' }} title="People and access" navigates onPress={() => router.push('/people')} /> : null}
+          {workspace.permissions.includes('mailboxes.update') ? <Row icon={{ ios: 'tray.2', android: 'inbox' }} title="Manage mailboxes" navigates onPress={() => router.push('/mailboxes')} /> : null}
+          {workspace.permissions.includes('sending.configure') ? <Row icon={{ ios: 'paperplane', android: 'send' }} title="Sending" navigates onPress={() => router.push('/sending')} /> : null}
         </Section>
       ) : null}
 
@@ -125,7 +132,8 @@ export default function SettingsScreen() {
       </Section>
 
       <Section title="Sending and alerts" inset="icon">
-        <Row icon={{ ios: 'arrow.uturn.backward', android: 'undo' }} title="Undo send" value={`${s.undoSendSeconds} s`} navigates onPress={() => router.push({ pathname: '/settings/option', params: { key: 'undoSend' } })} />
+        <SwitchRow title="Haptic feedback" subtitle="Gentle feedback for taps and actions" value={s.haptics} onValueChange={(haptics)=>updateSettings({haptics})}/>
+        {!live ? <Row icon={{ ios: 'arrow.uturn.backward', android: 'undo' }} title="Undo send" value={`${s.undoSendSeconds} s`} navigates onPress={() => router.push({ pathname: '/settings/option', params: { key: 'undoSend' } })} /> : null}
         <Row
           icon={{ ios: 'arrowshape.turn.up.left', android: 'reply' }}
           title="Default reply"
@@ -133,7 +141,6 @@ export default function SettingsScreen() {
           navigates
           onPress={() => router.push({ pathname: '/settings/option', params: { key: 'defaultReply' } })}
         />
-        <Row icon={{ ios: 'bell', android: 'notifications' }} title="Notifications" value={NOTIFY_NAMES[s.notifications]} navigates onPress={() => router.push({ pathname: '/settings/option', params: { key: 'notifications' } })} />
       </Section>
 
       <Section title="About" footer={live ? 'Your workspace mail is stored in its own Cloudflare account.' : undefined} inset="icon">
@@ -154,9 +161,9 @@ export default function SettingsScreen() {
       <Section>
         <Pressable
           onPress={() =>
-            Alert.alert('Sign out of Sendraa?', 'Mail stays in your workspace. You can sign in again at any time.', [
+            Alert.alert('Sign out of this account?', 'Your other saved accounts will stay signed in.', [
               { text: 'Cancel', style: 'cancel' },
-              { text: 'Sign out', style: 'destructive', onPress: () => void authClient.signOut() },
+              { text: 'Sign out', style: 'destructive', onPress: () => void signOutCurrentAccount().catch((err)=>Alert.alert('Could not sign out',err.message)) },
             ])
           }
           style={({ pressed }) => [styles.signOut, pressed && { backgroundColor: c.fill }]}

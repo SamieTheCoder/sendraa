@@ -1,4 +1,4 @@
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { Redirect, Stack, useLocalSearchParams } from 'expo-router';
 import { ScrollView } from 'react-native';
 
 import { Row, Section } from '@/components/grouped-list';
@@ -30,21 +30,14 @@ const SETS: Record<string, OptionSet> = {
       { label: 'Reply all', selected: (s) => s.defaultReply === 'replyAll', apply: () => updateSettings({ defaultReply: 'replyAll' }) },
     ],
   },
-  notifications: {
-    title: 'Notify me about',
-    footer: 'Notifications start working when the mail service is connected.',
-    choices: [
-      { label: 'All new mail', selected: (s) => s.notifications === 'all', apply: () => updateSettings({ notifications: 'all' }) },
-      { label: 'Important only', selected: (s) => s.notifications === 'important', apply: () => updateSettings({ notifications: 'important' }) },
-      { label: 'Off', selected: (s) => s.notifications === 'none', apply: () => updateSettings({ notifications: 'none' }) },
-    ],
-  },
+
 };
 
 export default function OptionScreen() {
   const { key } = useLocalSearchParams<{ key: string }>();
   const state = useMail();
   const c = useColors();
+  if (key === 'notifications') return <Redirect href="/notifications" />;
   const set = SETS[key ?? ''];
   if (!set) return null;
 

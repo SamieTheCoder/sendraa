@@ -7,7 +7,8 @@
  * - A binding grants one role to one user on one resource.
  * - Resources form a hierarchy, `tenants/<id>` above
  *   `tenants/<id>/mailboxes/<id>`. Bindings are inherited downwards, so a
- *   role on the tenant applies to every mailbox in it.
+ *   role on the tenant applies to management and shared mailboxes. Personal
+ *   mailbox content additionally requires ownership, enforced by policy.ts.
  */
 
 export const PERMISSIONS = [

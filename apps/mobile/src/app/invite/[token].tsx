@@ -6,10 +6,11 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { Button, ErrorText, Field } from '@/components/form';
 import { api, ApiError } from '@/lib/api';
 import { authClient } from '@/lib/auth-client';
-import { loadMe } from '@/lib/workspace';
+import { rememberCurrentSession } from '@/lib/account-sessions';
+import { loadMe, setActiveWorkspace } from '@/lib/workspace';
 import { useColors } from '@/theme/colors';
 
-type Preview = { workspace: string; email: string; role: string; expiresAt: string; hasAccount: boolean };
+type Preview = { workAddress: string | null; workspace: string; email: string; loginEmail?: string; separateAccount?: boolean; role: string; expiresAt: string; hasAccount: boolean };
 
 export default function AcceptInvite() {
   const { token } = useLocalSearchParams<{ token: string }>();
@@ -21,6 +22,7 @@ export default function AcceptInvite() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [createdWorkAccount, setCreatedWorkAccount] = useState<{email:string;workspaceId:string} | null>(null);
 
   useEffect(() => {
     api<Preview>(`/v1/invites/${encodeURIComponent(token ?? '')}`)
@@ -30,16 +32,43 @@ export default function AcceptInvite() {
 
   const signedInAsInvitee = Boolean(session && preview && session.user.email.toLowerCase() === preview.email.toLowerCase());
 
+  const goToSignIn = async () => {
+    if (!preview || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      if (session) {
+        await rememberCurrentSession();
+      }
+      router.push({ pathname: '/sign-in', params: { invite: token, email: preview.loginEmail ?? preview.email, ...(session ? { add: '1', from: session.session.id } : {}) } });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not open sign-in.');
+    } finally { setBusy(false); }
+  };
+
   const accept = async () => {
-    if (!preview) return;
-    if (!preview.hasAccount && (!name.trim() || password.length < 10)) {
+    if (!preview || busy) return;
+    if (!preview.hasAccount && !createdWorkAccount && (!name.trim() || password.length < 10)) {
       setError('Enter your name and a password of at least 10 characters.');
       return;
     }
     setBusy(true);
     setError(null);
     try {
-      if (preview.hasAccount) {
+      if (session) await rememberCurrentSession();
+      let workspaceId: string | undefined;
+      if (preview.separateAccount) {
+        let account = createdWorkAccount;
+        if (!account) {
+          const result = await api<{loginEmail:string;workspaceId:string}>('/v1/invites/accept',{method:'POST',body:{token,name:name.trim(),password}});
+          account = {email:result.loginEmail,workspaceId:result.workspaceId};
+          setCreatedWorkAccount(account);
+        }
+        // Better Auth stores the new session in Keychain/Keystore on native.
+        const result = await authClient.signIn.email({email:account.email,password});
+        if(result.error) throw new Error(`Your work account is created. ${result.error.message ?? 'Sign in with your work email and the password you chose.'}`);
+        workspaceId=account.workspaceId;
+      } else if (preview.hasAccount || signedInAsInvitee) {
         await api('/v1/invites/accept', { method: 'POST', body: { token } });
       } else {
         // Account creation goes through Better Auth so the session cookie is stored securely.
@@ -52,6 +81,7 @@ export default function AcceptInvite() {
       }
       const fresh = await authClient.getSession();
       if (fresh.data?.user.id) await loadMe(fresh.data.user.id);
+      if(workspaceId) setActiveWorkspace(workspaceId);
       router.replace('/mail');
     } catch (err) {
       setError(err instanceof ApiError || err instanceof Error ? err.message : 'Could not accept the invite.');
@@ -78,9 +108,14 @@ export default function AcceptInvite() {
               Join {preview.workspace}
             </Text>
             <Text style={[styles.body, { color: c.secondaryLabel }]}>
-              You have been invited as {preview.role}. Your address is {preview.email}.
+              {preview.separateAccount ? 'Create your work account and choose its password. Your personal Sendraa account stays separate.' : `You have been invited as ${preview.role}. Sign in with ${preview.email}.`}
             </Text>
 
+            {preview.workAddress ? <View style={{padding:18,borderRadius:12,backgroundColor:c.cell,gap:6}}>
+              <Text style={{color:c.secondaryLabel}}>Your work email</Text>
+              <Text selectable style={{color:c.label,fontSize:20,fontWeight:'600'}}>{preview.workAddress}</Text>
+            </View> : null}
+            {preview.separateAccount ? <Text style={[styles.body,{color:c.secondaryLabel}]}>The invitation was sent to {preview.email}. This address is used for account recovery, not for signing in to your work mailbox.</Text> : null}
             {preview.hasAccount ? (
               signedInAsInvitee ? (
                 <Button variant="brand" title={`Join ${preview.workspace}`} onPress={accept} loading={busy} />
@@ -88,15 +123,15 @@ export default function AcceptInvite() {
                 <>
                   <Text style={[styles.body, { color: c.secondaryLabel }]}>
                     {session
-                      ? `You are signed in as ${session.user.email}. Sign out, then sign in as ${preview.email} and open this link again.`
-                      : `${preview.email} already has a Sendraa account. Sign in, then open this link again.`}
+                      ? `You are signed in as ${session.user.email}. Switch to ${preview.email} to accept this invitation.`
+                      : `${preview.email} has an existing Sendraa login. Sign in to continue with this invitation. Deleting a mailbox does not delete that login.`}
                   </Text>
-                  <Button variant="plain" title={session ? 'Sign out' : 'Go to sign in'} onPress={() => (session ? authClient.signOut() : router.replace('/sign-in'))} />
+                  <Button variant="plain" title={session ? 'Switch account' : 'Sign in to continue'} onPress={goToSignIn} loading={busy} />
                 </>
               )
             ) : (
               <>
-                <Field label="Your name" value={name} onChangeText={setName} textContentType="name" autoComplete="name" returnKeyType="next" />
+                <Field label="Your name" value={name} onChangeText={setName} textContentType="name" autoComplete="name" returnKeyType="next" editable={!busy && !createdWorkAccount} />
                 <Field
                   label="Choose a password"
                   value={password}
@@ -107,9 +142,10 @@ export default function AcceptInvite() {
                   placeholder="At least 10 characters"
                   returnKeyType="go"
                   onSubmitEditing={accept}
+                  editable={!busy}
                 />
                 <ErrorText>{error}</ErrorText>
-                <Button variant="brand" title="Create account and join" onPress={accept} loading={busy} />
+                <Button variant="brand" title={createdWorkAccount ? 'Sign in to work mailbox' : preview.separateAccount ? 'Create work account' : 'Create account and join'} onPress={accept} loading={busy} />
               </>
             )}
             {preview.hasAccount ? <ErrorText>{error}</ErrorText> : null}

@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import { auth, type Session } from './auth.js';
 import { IamError } from './iam/policy.js';
+import { one } from './db.js';
 
 export type AppEnv = { Variables: { session: Session } };
 
@@ -11,6 +12,9 @@ export type AppEnv = { Variables: { session: Session } };
 export const requireSession = createMiddleware<AppEnv>(async (c, next) => {
   const session = await auth.api.getSession({ headers: c.req.raw.headers });
   if (!session) return c.json({ error: { code: 'UNAUTHENTICATED', message: 'Sign in to continue.' } }, 401);
+  if (await one('select 1 from mailbox where account_user_id=$1 and deleting_at is not null',[session.user.id])) {
+    return c.json({error:{code:'ACCOUNT_DELETING',message:'This work account is being deleted.'}},401);
+  }
   c.set('session', session);
   await next();
 });

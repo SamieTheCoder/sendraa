@@ -1,7 +1,8 @@
-import * as Haptics from 'expo-haptics';
+import { haptic } from '@/lib/haptics';
 import { router, Stack } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { HapticPressable as Pressable } from '@/components/haptic-pressable';
+import { ActivityIndicator, AppState, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Button, ErrorText } from '@/components/form';
 import { Icon } from '@/components/icon';
@@ -13,6 +14,7 @@ type Step = { id: string; title: string; status: 'pending' | 'running' | 'done' 
 type Setup = {
   status: 'not_started' | 'running' | 'ready' | 'failed';
   error: string | null;
+  updateAvailable: boolean;
   cloudflareAccount: string | null;
   cloudflareAccountId: string | null;
   domain: { name: string } | null;
@@ -42,7 +44,7 @@ export default function SetupScreen() {
       const s = await api<Setup>(`/v1/tenants/${tid}/setup`);
       setSetup(s);
       if (lastStatus.current === 'running' && s.status !== 'running') {
-        void Haptics.notificationAsync(s.status === 'ready' ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Error);
+        haptic(s.status === 'ready' && !s.error ? 'success' : 'error');
         const me = getMe();
         if (me) void loadMe(me.user.id);
       }
@@ -115,10 +117,12 @@ export default function SetupScreen() {
 
       <View style={styles.intro}>
         <Text style={[styles.title, { color: c.label }]} accessibilityRole="header">
-          {ready ? `${domainName} is ready` : domainName ? `Email for ${domainName}` : 'Choose your domain'}
+          {ready && setup.updateAvailable ? 'Email update available' : ready ? `${domainName} is ready` : domainName ? `Email for ${domainName}` : 'Choose your domain'}
         </Text>
         <Text style={[styles.body, { color: c.secondaryLabel }]}>
-          {ready
+          {ready && setup.updateAvailable
+            ? 'Update your workspace’s mail service to enable sending. Your existing mail and addresses are kept.'
+            : ready
             ? `Mail sent to admin@${domainName} now arrives in Sendraa. Everything runs in ${setup.cloudflareAccount ?? 'your Cloudflare account'}.`
             : `Sendraa creates a database, storage and a small Worker in ${setup.cloudflareAccount ?? 'your Cloudflare account'}, then turns on Email Routing. All on Cloudflare’s free plan.`}
         </Text>
@@ -172,10 +176,11 @@ export default function SetupScreen() {
         </View>
       ) : null}
 
-      <ErrorText>{error}</ErrorText>
+      <ErrorText>{error ?? setup.error}</ErrorText>
 
       {ready ? (
         <View style={{ gap: 12 }}>
+          {workspace?.permissions.includes('domains.create') ? <Button variant={setup.updateAvailable || setup.error ? 'brand' : 'outline'} title={running ? 'Updating email…' : setup.updateAvailable ? 'Update email service' : setup.error ? 'Retry email update' : 'Check and repair email service'} onPress={start} loading={running} disabled={running} /> : null}
           <Button variant="brand" title="Secure your account" onPress={() => router.push({ pathname: '/account-security', params: { onboarding: '1' } })} />
           <Button variant="plain" title="Open inbox" onPress={() => router.replace('/mail')} />
         </View>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AppState } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 
 import { useActiveWorkspace } from '@/lib/workspace';
 
@@ -19,14 +20,16 @@ export function useLiveMail() {
   const [error, setError] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     if (!ready || !workspace) return;
+    let current = true;
     connectWorkspace(workspace.id)
-      .then(() => setConnected(true))
-      .catch((err) => setError(err instanceof Error ? err.message : 'Could not load your mailboxes.'));
-  }, [ready, workspace]);
+      .then(() => { if (current) { setConnected(true);setError(null); } })
+      .catch((err) => current && setError(err instanceof Error ? err.message : 'Could not load your mailboxes.'));
+    return () => { current = false; };
+  }, [ready, workspace]));
 
-  const live = connected && accounts.some((a) => a.id === activeAccountId && a.live);
+  const live = connected && accounts.some((a) => a.id === activeAccountId && a.live && !a.unavailable);
 
   const refresh = useCallback(async () => {
     if (!live) return;

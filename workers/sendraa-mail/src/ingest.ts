@@ -164,7 +164,16 @@ export async function ingest(message: ForwardableEmailMessage, env: Env, ctx: Ex
       ).bind(a.id, id, a.filename, a.contentType, a.size, a.contentId, a.inline ? 1 : 0, a.key),
     );
   }
-  await env.DB.batch(statements);
+  try {
+    await env.DB.batch(statements);
+  } catch (error) {
+    if (!await env.DB.prepare('select id from mailboxes where id=?').bind(mailbox.id).first()) {
+      await env.BLOB.delete([rawKey,...attachments.map((a) => a.key)]);
+      message.setReject('550 5.1.1 Mailbox was deleted');
+      return;
+    }
+    throw error;
+  }
 
   log('info', 'stored', { mailboxId: mailbox.id, size: raw.byteLength, needsParse, attachments: attachments.length });
 

@@ -13,7 +13,11 @@
         "dark": "./assets/images/icon-dark.png",
         "tinted": "./assets/images/icon-tinted.png"
       },
-      "bundleIdentifier": "com.scientific-samie.sendraa"
+      "bundleIdentifier": "com.scientific-samie.sendraa",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "appleTeamId": "PT8JN7TFSB"
     },
     "android": {
       "adaptiveIcon": {
@@ -22,7 +26,8 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.scientificsamie.sendraa"
     },
     "web": {
       "output": "server",
@@ -43,11 +48,29 @@
         }
       ],
       "expo-secure-store",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-notifications",
+        {
+          "color": "#F5C400",
+          "defaultChannel": "mail"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "b355ffc4-a9b9-4517-8910-1496ae115432"
+      }
+    },
+    "owner": "scientific_samie"
   }
 }

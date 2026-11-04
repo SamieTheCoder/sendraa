@@ -1,5 +1,8 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
+import { z } from 'zod';
+import { bodyLimit } from 'hono/body-limit';
+import { enqueueMail } from '../push.js';
 import { Hono } from 'hono';
 
 import { open } from '../crypto.js';
@@ -9,9 +12,12 @@ import { one } from '../db.js';
  * F9 entry point: the tenant Worker reports new mail here. The payload holds
  * ids only, never mail content. It is signed with the tenant's Worker secret as
  * `x-sendraa-signature: t=<unix seconds>,v1=<hex HMAC-SHA256 of "t.body">`.
- * Push delivery (Expo Push) hangs off this later.
+ * Valid events enqueue Expo deliveries without persisting message content.
  */
 export const hooks = new Hono();
+
+hooks.use('*',bodyLimit({maxSize:4096}));
+const eventSchema=z.object({tenantId:z.uuid(),mailboxId:z.uuid(),threadId:z.uuid(),messageId:z.uuid(),event:z.literal('message.received')});
 
 const TOLERANCE_SECONDS = 300;
 
@@ -34,6 +40,8 @@ hooks.post('/hooks/mail', async (c) => {
   const given = Buffer.from(sig[2]!, 'hex');
   if (given.length !== expected.length || !timingSafeEqual(given, expected)) return c.body(null, 401);
 
-  console.log(JSON.stringify({ message: 'mail hook', tenantId: payload.tenantId, event: payload.event, mailboxId: payload.mailboxId }));
+  const event=eventSchema.safeParse(payload);
+  if(!event.success)return c.body(null,400);
+  await enqueueMail(event.data);
   return c.body(null, 204);
 });

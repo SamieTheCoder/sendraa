@@ -2,12 +2,14 @@ import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, StatusBar, StyleSheet, Text, View } from 'react-native';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { Button } from '@/components/form';
+import { NotificationObserver } from '@/components/notification-observer';
 import { UndoBar } from '@/components/undo-bar';
+import { useIdentityScope, signOutCurrentAccount } from '@/lib/account-sessions';
 import { authClient } from '@/lib/auth-client';
 import { loadMe, useMe } from '@/lib/workspace';
 import { useColors, useScheme, useTintHex } from '@/theme/colors';
@@ -32,13 +34,14 @@ export default function RootLayout() {
   // Only the first session check may hold the app on the spinner.
   const [sessionKnown, setSessionKnown] = useState(false);
   if (!isPending && !sessionKnown) setSessionKnown(true);
+  const identityReady = useIdentityScope(session?.user.id ?? null);
   const me = useMe(session?.user.id);
   // A font failure falls back to the system face rather than blocking launch.
   const [fontsLoaded, fontError] = useFonts({ LeagueGothic: require('../../assets/fonts/LeagueGothic.ttf') });
   const signedIn = Boolean(session);
-  const ready = me.status === 'ready';
+  const ready = me.status === 'ready' && me.userId === session?.user.id && identityReady;
   const hasWorkspace = signedIn && ready && me.me.workspaces.length > 0;
-  const deciding = !sessionKnown || (!fontsLoaded && !fontError) || (signedIn && (me.status === 'idle' || me.status === 'loading'));
+  const deciding = !identityReady || (Boolean(session) && "userId" in me && me.userId !== session?.user.id) || !sessionKnown || (!fontsLoaded && !fontError) || (signedIn && (me.status === 'idle' || me.status === 'loading'));
 
   useEffect(() => {
     if (!deciding) void SplashScreen.hideAsync();
@@ -54,7 +57,7 @@ export default function RootLayout() {
         <Text style={[styles.title, { color: c.label }]}>Cannot load your workspace</Text>
         <Text style={[styles.body, { color: c.secondaryLabel }]}>{me.message}</Text>
         <Button title="Try again" onPress={() => session && loadMe(session.user.id)} />
-        <Button variant="plain" title="Sign out" onPress={() => authClient.signOut()} />
+        <Button variant="plain" title="Sign out" onPress={() => void signOutCurrentAccount().catch((err) => Alert.alert('Could not sign out', err instanceof Error ? err.message : 'Try again.'))} />
       </View>
     );
   }
@@ -65,10 +68,9 @@ export default function RootLayout() {
       {/* Navigators own safe-area spacing; the keyboard provider must not add it again. */}
       <KeyboardProvider statusBarTranslucent navigationBarTranslucent preserveEdgeToEdge>
       <ThemeProvider value={theme}>
-        <Stack screenOptions={{ headerTintColor: tint, headerTitleStyle: { color: c.label }, headerStyle: { backgroundColor: c.background }, headerTransparent: false, headerShadowVisible: false, headerBackButtonDisplayMode: 'minimal' }}>
-          <Stack.Protected guard={!signedIn}>
-            <Stack.Screen name="sign-in" options={{ headerShown: false }} />
-          </Stack.Protected>
+        <Stack key={session?.user.id ?? "signed-out"} screenOptions={{ headerTintColor: tint, headerTitleStyle: { color: c.label }, headerStyle: { backgroundColor: c.background }, headerTransparent: false, headerShadowVisible: false, headerBackButtonDisplayMode: 'minimal' }}>
+          {/* Sign-in owns its authenticated redirect so invitation params survive login. */}
+          <Stack.Screen name="sign-in" options={{ headerShown: false }} />
 
           <Stack.Protected guard={signedIn && ready && !hasWorkspace}>
             <Stack.Screen name="onboarding" />
@@ -77,6 +79,7 @@ export default function RootLayout() {
           <Stack.Protected guard={hasWorkspace}>
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="thread/[id]" options={{ title: '' }} />
+            <Stack.Screen name="attachment/[id]" options={{ title: 'Attachment' }} />
             <Stack.Screen name="compose" options={{ presentation: 'modal', title: 'New message' }} />
             <Stack.Screen
               name="snooze"
@@ -89,6 +92,11 @@ export default function RootLayout() {
             <Stack.Screen name="people/index" options={{ title: 'People and access' }} />
             <Stack.Screen name="people/invite" options={{ presentation: 'modal', title: 'Invite someone' }} />
             <Stack.Screen name="setup" options={{ title: 'Email setup' }} />
+            <Stack.Screen name="notifications" options={{title:'Notifications'}} />
+            <Stack.Screen name="sending" options={{ title: 'Sending' }} />
+            <Stack.Screen name="mailboxes/index" options={{ title: 'Manage mailboxes' }} />
+            <Stack.Screen name="mailboxes/new" options={{ title: 'Create mailbox' }} />
+            <Stack.Screen name="mailboxes/[id]" options={{ title: 'Mailbox access' }} />
             <Stack.Screen name="folders" options={{ presentation: 'transparentModal', headerShown: false, animation: 'slide_from_left', contentStyle: { backgroundColor: 'transparent' } }} />
             <Stack.Screen name="account-security" options={{ title: 'Account security' }} />
           </Stack.Protected>
@@ -99,7 +107,7 @@ export default function RootLayout() {
           <Stack.Screen name="legal" options={{ title: 'Legal' }} />
           <Stack.Screen name="forgot-password" options={{ title: 'Reset password' }} />
         </Stack>
-        {hasWorkspace ? <UndoBar /> : null}
+        {hasWorkspace ? <><NotificationObserver userId={session!.user.id} /><UndoBar /></> : null}
       </ThemeProvider>
       </KeyboardProvider>
     </GestureHandlerRootView>

@@ -1,7 +1,10 @@
+import { haptic } from '@/lib/haptics';
 import { router, Stack } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { HapticPressable as Pressable } from '@/components/haptic-pressable';
+import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
+import { AccountMenu } from '@/components/account-switcher';
 import { EmptyState } from '@/components/empty-state';
 import { ThreadRow } from '@/components/thread-row';
 import { listTime, snippet } from '@/mail/format';
@@ -97,7 +100,7 @@ export default function MailList() {
       <Stack.Screen options={{ title: selecting ? `${selected.length} selected` : title }} />
 
       <Stack.Toolbar placement="left">
-        <Stack.Toolbar.Button icon={ToolbarIcon.menu} hidden={selecting || isIOS} accessibilityLabel="Folders and mailboxes" onPress={() => router.push('/folders')} />
+        <Stack.Toolbar.Button icon={ToolbarIcon.menu} hidden={selecting || isIOS} accessibilityLabel="Folders and mailboxes" onPress={() => { haptic(); return (() => router.push('/folders'))(); }} />
         <Stack.Toolbar.Menu icon={ToolbarIcon.menu} hidden={selecting || !isIOS} accessibilityLabel="Folders">
           <Stack.Toolbar.Menu inline title={account.address}>
             {FOLDERS.map((f) => {
@@ -107,7 +110,7 @@ export default function MailList() {
                   key={f.id}
                   icon={isIOS ? f.ios : undefined}
                   isOn={folder === f.id}
-                  onPress={() => setFolder(f.id)}
+                  onPress={() => { haptic(); return (() => setFolder(f.id))(); }}
                 >
                   {count > 0 ? `${f.title} · ${count}` : f.title}
                 </Stack.Toolbar.MenuAction>
@@ -121,7 +124,7 @@ export default function MailList() {
                   key={l.id}
                   icon={isIOS ? 'tag' : undefined}
                   isOn={folder === `label:${l.id}`}
-                  onPress={() => setFolder(`label:${l.id}`)}
+                  onPress={() => { haptic(); return (() => setFolder(`label:${l.id}`))(); }}
                 >
                   {l.name}
                 </Stack.Toolbar.MenuAction>
@@ -135,7 +138,7 @@ export default function MailList() {
                   key={a.id}
                   isOn={a.id === state.activeAccountId}
                   subtitle={a.shared ? 'Shared mailbox' : undefined}
-                  onPress={() => setActiveAccount(a.id)}
+                  onPress={() => { haptic(); return (() => setActiveAccount(a.id))(); }}
                 >
                   {a.address}
                 </Stack.Toolbar.MenuAction>
@@ -143,21 +146,23 @@ export default function MailList() {
             </Stack.Toolbar.Menu>
           ) : null}
         </Stack.Toolbar.Menu>
-        <Stack.Toolbar.Button hidden={!selecting} onPress={() => setSelected([])}>
+        <Stack.Toolbar.Button hidden={!selecting} onPress={() => { haptic(); return (() => setSelected([]))(); }}>
           Cancel
         </Stack.Toolbar.Button>
       </Stack.Toolbar>
 
       <Stack.Toolbar placement="right">
+        <Stack.Toolbar.View hidden={selecting} hidesSharedBackground><AccountMenu/></Stack.Toolbar.View>
         <Stack.Toolbar.Button
           hidden={selecting}
           icon={ToolbarIcon.compose}
+          disabled={account.live && !account.canSend}
           accessibilityLabel="New message"
-          onPress={() => router.push('/compose')}
+          onPress={() => { haptic(); return (() => router.push('/compose'))(); }}
         />
         <Stack.Toolbar.Button
           hidden={!selecting}
-          onPress={() => setSelected(threads.map((t) => t.id))}
+          onPress={() => { haptic(); return (() => setSelected(threads.map((t) => t.id)))(); }}
         >
           Select all
         </Stack.Toolbar.Button>
@@ -166,49 +171,49 @@ export default function MailList() {
       {selecting ? (
         <Stack.Toolbar>
           {inTrash || inSpam ? (
-            <Stack.Toolbar.Button icon={ToolbarIcon.unarchive} accessibilityLabel="Move to Inbox" onPress={() => finish(moveToInbox)} />
+            <Stack.Toolbar.Button icon={ToolbarIcon.unarchive} accessibilityLabel="Move to Inbox" onPress={() => { haptic(); return (() => finish(moveToInbox))(); }} />
           ) : (
-            <Stack.Toolbar.Button icon={ToolbarIcon.archive} accessibilityLabel="Archive" onPress={() => finish(archive)} />
+            <Stack.Toolbar.Button icon={ToolbarIcon.archive} accessibilityLabel="Archive" onPress={() => { haptic(); return (() => finish(archive))(); }} />
           )}
           <Stack.Toolbar.Spacer />
           <Stack.Toolbar.Button
             icon={ToolbarIcon.trash}
             accessibilityLabel={inTrash ? 'Delete forever' : 'Move to Trash'}
-            onPress={() => finish(inTrash ? deleteForever : trash)}
+            onPress={() => { haptic(); return (() => finish(inTrash ? deleteForever : trash))(); }}
           />
           <Stack.Toolbar.Spacer />
           <Stack.Toolbar.Button
             icon={ToolbarIcon.unread}
             accessibilityLabel={anyUnread ? 'Mark as read' : 'Mark as unread'}
-            onPress={() => finish((ids) => markRead(ids, anyUnread))}
+            onPress={() => { haptic(); return (() => finish((ids) => markRead(ids, anyUnread)))(); }}
           />
           <Stack.Toolbar.Spacer />
           <Stack.Toolbar.Menu icon={ToolbarIcon.more} accessibilityLabel="More actions">
-            <Stack.Toolbar.MenuAction icon={isIOS ? (allStarred ? 'star.slash' : 'star') : undefined} onPress={() => finish((ids) => setStarred(ids, !allStarred))}>
+            <Stack.Toolbar.MenuAction icon={isIOS ? (allStarred ? 'star.slash' : 'star') : undefined} onPress={() => { haptic(); return (() => finish((ids) => setStarred(ids, !allStarred)))(); }}>
               {allStarred ? 'Remove star' : 'Add star'}
             </Stack.Toolbar.MenuAction>
             <Stack.Toolbar.MenuAction
               icon={isIOS ? 'clock' : undefined}
-              onPress={() => {
+              onPress={() => { haptic(); return (() => {
                 const ids = realIds(selected);
                 setSelected([]);
                 router.push({ pathname: '/snooze', params: { ids: ids.join(',') } });
-              }}
+              })(); }}
             >
               Snooze
             </Stack.Toolbar.MenuAction>
             <Stack.Toolbar.MenuAction
               icon={isIOS ? 'folder' : undefined}
-              onPress={() => {
+              onPress={() => { haptic(); return (() => {
                 const ids = realIds(selected);
                 setSelected([]);
                 router.push({ pathname: '/organize', params: { ids: ids.join(',') } });
-              }}
+              })(); }}
             >
               Move and label
             </Stack.Toolbar.MenuAction>
             {!inSpam ? (
-              <Stack.Toolbar.MenuAction icon={isIOS ? 'exclamationmark.octagon' : undefined} destructive onPress={() => finish(reportSpam)}>
+              <Stack.Toolbar.MenuAction icon={isIOS ? 'exclamationmark.octagon' : undefined} destructive onPress={() => { haptic(); return (() => finish(reportSpam))(); }}>
                 Report spam
               </Stack.Toolbar.MenuAction>
             ) : null}
@@ -275,7 +280,7 @@ export default function MailList() {
           ListEmptyComponent={(() => {
             const meta = FOLDERS.find((f) => f.id === folder);
             const copy = EMPTY[folder] ?? { title: `No mail labelled ${title}`, message: 'Add this label to a conversation from its More menu.' };
-            return <EmptyState ios={meta?.ios ?? 'tag'} android={(meta?.android ?? 'label') as never} {...copy} />;
+            return <EmptyState ios={meta?.ios ?? 'tag'} android={(meta?.android ?? 'label') as never} {...(account.unavailable ? {title:'No mailbox access',message:'An admin can assign a mailbox in Settings → Manage mailboxes.'} : copy)} />;
           })()}
         />
       )}

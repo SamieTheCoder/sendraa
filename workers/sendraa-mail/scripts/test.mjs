@@ -1,0 +1,80 @@
+import assert from 'node:assert/strict';
+import { readFile, readdir } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
+const wranglerRequire = createRequire(require.resolve('wrangler/package.json'));
+const { Miniflare, convertV4MiniflareOptions } = wranglerRequire('miniflare');
+const mf = new Miniflare(convertV4MiniflareOptions({ name:'mail-test', modules:true, scriptPath:new URL('../dist/worker.js',import.meta.url).pathname,
+  compatibilityDate:'2026-10-23', d1Databases:['DB'],r2Buckets:['BLOB'],bindings:{TENANT_SECRET:'test-secret',TENANT_ID:'test',PLATFORM_WEBHOOK:''} }));
+let count=0;
+const check=(name,value)=>{assert.ok(value,name);count++;console.log(`PASS ${name}`);};
+const call=(path,body,method=body===undefined?'GET':'PUT')=>mf.dispatchFetch(`https://worker.test${path}`,{method,headers:{authorization:'Bearer test-secret','content-type':typeof body==='string'?'application/octet-stream':'application/json'},body:body===undefined?undefined:typeof body==='string'?body:JSON.stringify(body)});
+try {
+  const db=await mf.getD1Database('DB');
+  for(const file of (await readdir(new URL('../schema/',import.meta.url))).filter((f)=>f.endsWith('.sql')).sort()) {
+    const schema=await readFile(new URL(`../schema/${file}`,import.meta.url),'utf8');
+    for(const sql of schema.replace(/^--.*$/gm,'').split(';').map((s)=>s.trim()).filter(Boolean))await db.prepare(sql).run();
+  }
+  check('Worker rejects unauthenticated requests',(await mf.dispatchFetch('https://worker.test/v1/health')).status===401);
+  check('Worker advertises outbound capability',(await (await call('/v1/health')).json()).capabilities.includes('outbound'));
+  await call('/v1/mailboxes/mailbox-a',{address:'a@example.invalid',displayName:'A'});
+  await call('/v1/mailboxes/mailbox-b',{address:'b@example.invalid',displayName:'B'});
+  const path='/v1/mailboxes/mailbox-a/outbound/send-a';
+  const message={from:{name:'A',address:'a@example.invalid'},to:[{name:'B',address:'recipient@example.invalid'}],cc:[],subject:'Hello',text:'Test body',date:new Date().toISOString(),messageId:'<sent@example.invalid>',threadId:null,inReplyTo:null,references:[],rawSize:3,attachments:[{name:'file.txt',type:'text/plain',size:4}]};
+  check('missing raw object cannot create a Sent record',(await call(path,message)).status===409);
+  await call(`${path}/raw`,'raw');await call(`${path}/att-0`,'file');
+  const saved=await call(path,message);assert.equal(saved.status,200);check('Sent message stored in D1 and R2',(await saved.json()).threadId==='send-a');
+  await Promise.all([call(path,message),call(path,message)]);
+  const full=await (await call('/v1/mailboxes/mailbox-a/threads/send-a')).json();
+  check('replayed copies do not duplicate messages or counts',full.messageCount===1&&full.messages.length===1);
+  check('Message-ID and attachment metadata are readable',full.messages[0].messageId==='sent@example.invalid'&&full.messages[0].attachments[0].size===4);
+  check('raw object is retrievable',(await (await call('/v1/mailboxes/mailbox-a/messages/send-a/raw')).text())==='raw');
+  check('another mailbox cannot read the raw object',(await call('/v1/mailboxes/mailbox-b/messages/send-a/raw')).status===404);
+  check('another mailbox cannot read the thread',(await call('/v1/mailboxes/mailbox-b/threads/send-a')).status===404);
+  check('another mailbox cannot download attachments',(await call('/v1/mailboxes/mailbox-b/attachments/send-a-0')).status===404);
+  await call('/v1/mailboxes/mailbox-a/threads/send-a',{location:'inbox'},'PATCH');
+  const sent=await (await call('/v1/mailboxes/mailbox-a/threads?location=sent')).json();
+  check('Sent view includes replies without moving conversation out of inbox',sent.threads.length===1&&sent.threads[0].location==='inbox'&&sent.threads[0].hasSent);
+  const replyPath='/v1/mailboxes/mailbox-a/outbound/reply-a';await call(`${replyPath}/raw`,'raw');
+  const reply={...message,threadId:'send-a',messageId:'<reply@example.invalid>',inReplyTo:'<sent@example.invalid>',references:['<sent@example.invalid>'],attachments:[]};
+  await Promise.all([call(replyPath,reply),call(replyPath,reply)]);
+  const after=await (await call('/v1/mailboxes/mailbox-a/threads/send-a')).json();
+  check('concurrent reply copies keep one message and correct count',after.messageCount===2&&after.messages.length===2);
+  check('threading headers survive storage',after.messages[1].inReplyTo==='sent@example.invalid');
+  const foreignPath='/v1/mailboxes/mailbox-b/outbound/foreign';await call(`${foreignPath}/raw`,'raw');
+  check('cannot attach outgoing message to another mailbox thread',(await call(foreignPath,{...reply,from:{name:'B',address:'b@example.invalid'}})).status===404);
+  check('oversized JSON is rejected by actual byte count',(await call('/v1/mailboxes/mailbox-a',{address:'a@example.invalid',displayName:'a'.repeat(70_000)})).status===413);
+  check('Worker advertises deferred parsing',(await (await call('/v1/health')).json()).capabilities.includes('parsed-message'));
+  await db.prepare('update messages set needs_parse=1,text_body=null,html_body=null where id=?').bind('reply-a').run();
+  const parsedPath='/v1/mailboxes/mailbox-a/messages/reply-a/parsed';
+  const parsed={text:'Image attached',html:null,attachments:[{name:'picture.png',type:'image/png',size:5,contentId:'image',inline:true}]};
+  check('another mailbox cannot update parsed contents',(await call('/v1/mailboxes/mailbox-b/messages/reply-a/parsed',parsed)).status===404);
+  check('missing attachment leaves message pending',(await call(parsedPath,parsed)).status===409);
+  check('invalid parsed metadata rejected',(await call(parsedPath,{...parsed,attachments:[{...parsed.attachments[0],size:-1}]})).status===400);
+  check('oversized parsed body rejected',(await call(parsedPath,{...parsed,text:'x'.repeat(1024*1024+1)})).status===413);
+  await call('/v1/mailboxes/mailbox-a/outbound/parse-reply-a/att-0','image');
+  const parsedResponses=await Promise.all([call(parsedPath,parsed),call(parsedPath,parsed)]);
+  check('concurrent parse writes are idempotent',parsedResponses.every((r)=>r.status===200));
+  const parsedThread=await (await call('/v1/mailboxes/mailbox-a/threads/send-a')).json();
+  const parsedMessage=parsedThread.messages.find((m)=>m.id==='reply-a');
+  check('deferred body becomes readable',parsedMessage.text==='Image attached'&&!parsedMessage.needsParse);
+  check('inline image is retained',parsedMessage.attachments.length===1&&parsedMessage.attachments[0].inline&&parsedMessage.attachments[0].name==='picture.png');
+  check('parsed attachment downloads exact bytes',await (await call('/v1/mailboxes/mailbox-a/attachments/reply-a-parsed-0')).text()==='image');
+  check('parsed attachment stays private',(await call('/v1/mailboxes/mailbox-b/attachments/reply-a-parsed-0')).status===404);
+  check('replay cannot overwrite completed body',(await call(parsedPath,{...parsed,text:'changed'})).status===200&&(await db.prepare('select text_body from messages where id=?').bind('reply-a').first()).text_body==='Image attached');
+  const blob=await mf.getR2Bucket('BLOB');
+  await blob.put('outbound/mailbox-a/unfinished/raw','unfinished');
+  await blob.put('raw/mailbox-b/keep.eml','keep');
+  let deletion;
+  for(let attempt=0;attempt<10;attempt++) {
+    deletion=await call('/v1/mailboxes/mailbox-a',undefined,'DELETE');
+    if((await deletion.json()).done)break;
+  }
+  check('mailbox deletion completes',deletion.status===200);
+  check('mailbox deletion removes its messages',!(await db.prepare('select id from messages where mailbox_id=?').bind('mailbox-a').first()));
+  check('mailbox deletion removes raw mail and unfinished uploads',!(await blob.list({prefix:'outbound/mailbox-a/'})).objects.length);
+  check('mailbox deletion preserves another mailbox and its objects',!!await db.prepare('select id from mailboxes where id=?').bind('mailbox-b').first()&&!!await blob.head('raw/mailbox-b/keep.eml'));
+  check('stale activation cannot recreate a deleted mailbox',(await call('/v1/mailboxes/mailbox-a',{address:'a@example.invalid'})).status===409);
+  check('repeated deletion is safe',(await call('/v1/mailboxes/mailbox-a',undefined,'DELETE')).status===200);
+  console.log(`${count} Worker runtime checks passed.`);
+} finally { await mf.dispose(); }

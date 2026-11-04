@@ -1,6 +1,6 @@
 {
   "name": "@sendraa/mail-worker",
-  "version": "0.1.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "description": "The Worker Sendraa deploys into each tenant's own Cloudflare account. Ingest plus a thin JSON API, nothing else.",
@@ -12,6 +12,7 @@
   },
   "scripts": {
     "build": "node scripts/build.mjs",
+    "test": "node scripts/build.mjs && node scripts/test.mjs",
     "types": "wrangler types",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "dev": "wrangler dev",

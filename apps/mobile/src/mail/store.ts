@@ -41,7 +41,8 @@ export type MailState = {
   recentSearches: string[];
 };
 
-const STORAGE_KEY = 'sendraa.mail';
+let STORAGE_KEY = 'sendraa.mail';
+let identity: string | null | undefined;
 
 function freshState(): MailState {
   return {
@@ -65,15 +66,19 @@ type KV = { getItemSync(key: string): string | null; setItemSync(key: string, va
 
 function storage(): KV { return mailStorage; }
 
+function emptyState(): MailState {
+  return {...freshState(), accounts:[{id:"unassigned",name:"Loading mailboxes",address:"",shared:false,live:true,canSend:false,unavailable:true}],activeAccountId:"unassigned",threads:[],drafts:[],labels:[],recentSearches:[]};
+}
+
 function load(): MailState {
   try {
     const raw = storage()?.getItemSync(STORAGE_KEY);
-    if (!raw) return freshState();
+    if (!raw) return identity === undefined ? freshState() : emptyState();
     const parsed = JSON.parse(raw) as MailState;
-    if (parsed.version !== SAMPLE_VERSION) return freshState();
+    if (parsed.version !== SAMPLE_VERSION) return identity === undefined ? freshState() : emptyState();
     return { ...freshState(), ...parsed, settings: { ...defaultSettings(), ...parsed.settings } };
   } catch {
-    return freshState();
+    return identity === undefined ? freshState() : emptyState();
   }
 }
 
@@ -94,6 +99,20 @@ function persist() {
 // ---------------------------------------------------------------------------
 
 let state: MailState = load();
+
+/** Mail/drafts/settings are namespaced by authenticated identity, never by email. */
+export function activateMailIdentity(userId: string | null) {
+  if(identity === userId)return;
+  if(persistTimer)clearTimeout(persistTimer);
+  if(identity) { try { storage().setItemSync(STORAGE_KEY,JSON.stringify(state)); } catch { /* Keep switching usable. */ } }
+  remoteSink=null;
+  dismissUndo();
+  identity=userId;
+  STORAGE_KEY=userId ? `sendraa.mail.user.${userId}` : "sendraa.mail.signed-out";
+  state=userId ? load() : emptyState();
+  listeners.forEach((l)=>l());
+}
+
 const listeners = new Set<() => void>();
 
 /** Receives conversation changes that must be written to the server. Set by mail/live.ts. */
@@ -421,7 +440,7 @@ export function send(draft: Draft, options: { scheduledAt?: Date; reopen: (draft
 
   const account = state.accounts.find((a) => a.id === draft.accountId) ?? activeAccount();
   if (account.live) {
-    return { ok: false, error: 'Sending from your domain is not set up yet. Receiving works now; sending through Cloudflare or Gmail comes next.' };
+    return { ok: false, error: 'Open this draft in Compose to send through your workspace’s configured provider.' };
   }
   const from: Address = { name: account.name, address: account.address };
   const message: Message = {

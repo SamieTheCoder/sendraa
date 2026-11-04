@@ -1,9 +1,14 @@
+import { haptic } from '@/lib/haptics';
 import * as DocumentPicker from 'expo-document-picker';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState, type ComponentRef } from 'react';
-import { ActionSheetIOS, Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { HapticPressable as Pressable } from '@/components/haptic-pressable';
+import { ActionSheetIOS, Alert, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { TextBox } from '@/components/form';
+import { ApiError } from '@/lib/api';
+import { useActiveWorkspace } from '@/lib/workspace';
+import { Button } from '@/components/form';
+import { refreshMailbox, sendLiveDraft } from '@/mail/live';
 import { Icon } from '@/components/icon';
 import { fileSize, parseAddresses, replaceTrailingToken, trailingToken } from '@/mail/format';
 import { contacts } from '@/mail/selectors';
@@ -25,7 +30,7 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { ToolbarIcon } from '@/theme/icons';
 
 const isIOS = process.env.EXPO_OS === 'ios';
-const MAX_BYTES = 25 * 1024 * 1024;
+const MAX_BYTES = 18 * 1024 * 1024;
 
 type Field = 'to' | 'cc' | 'bcc';
 
@@ -60,10 +65,14 @@ export default function Compose() {
   const params = useLocalSearchParams<{ draftId?: string; threadId?: string; mode?: string }>();
   const state = useMail();
   const c = useColors();
+  const workspace = useActiveWorkspace();
   const [draft, setDraft] = useState<Draft>(() => initialDraft(params));
   const [showCc, setShowCc] = useState(() => Boolean(draft.cc || draft.bcc));
   const [focused, setFocused] = useState<Field | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [needsWorkerUpdate, setNeedsWorkerUpdate] = useState(false);
+  const [sending, setSending] = useState(false);
+  const sendingRef = useRef(false);
   const dirty = useRef(Boolean(params.draftId));
   const finished = useRef(false);
   const bodyRef = useRef<ComponentRef<typeof TextInput>>(null);
@@ -82,8 +91,10 @@ export default function Compose() {
   }, [draft]);
 
   const update = (patch: Partial<Draft>) => {
+    if (sendingRef.current || draft.sendPending) return;
     dirty.current = true;
     setError(null);
+    setNeedsWorkerUpdate(false);
     setDraft((d) => ({ ...d, ...patch }));
   };
 
@@ -106,6 +117,7 @@ export default function Compose() {
   };
 
   const pickFrom = () => {
+    if (sendingRef.current || draft.sendPending) return;
     const options = state.accounts.map((a) => a.address);
     if (isIOS) {
       ActionSheetIOS.showActionSheetWithOptions(
@@ -123,23 +135,48 @@ export default function Compose() {
   };
 
   const attach = async () => {
-    const result = await DocumentPicker.getDocumentAsync({ multiple: true, copyToCacheDirectory: false });
+    if (sendingRef.current || draft.sendPending) return;
+    const result = await DocumentPicker.getDocumentAsync({ multiple: true, copyToCacheDirectory: true });
     if (result.canceled) return;
     const added = result.assets.map((a) => ({
       id: `${a.uri}-${a.name}`,
+      uri: a.uri,
       name: a.name,
       size: a.size ?? 0,
       type: a.mimeType ?? 'application/octet-stream',
     }));
     const total = [...draft.attachments, ...added].reduce((n, a) => n + a.size, 0);
     if (total > MAX_BYTES) {
-      Alert.alert('Attachments are too large', `A message can carry up to 25 MB. These files add up to ${fileSize(total)}.`);
+      Alert.alert('Attachments are too large', `Keep attachments under 18 MiB to leave room for email encoding. These files add up to ${fileSize(total)}.`);
       return;
     }
     update({ attachments: [...draft.attachments, ...added] });
   };
 
-  const doSend = (scheduledAt?: Date) => {
+  const doSend = async (scheduledAt?: Date) => {
+    if (sendingRef.current) return;
+    if (account.live) {
+      if (scheduledAt) { setError('Scheduled sending is not available for workspace mail yet. Send now or keep this draft.'); return; }
+      if (!account.canSend) { setError('This mailbox is read-only. Ask an admin for permission to send.'); return; }
+      sendingRef.current = true; setSending(true); setError(null); setNeedsWorkerUpdate(false);
+      saveDraft(draft);
+      try {
+        const result = await sendLiveDraft(draft);
+        haptic('success');
+        finished.current = true; deleteDraft(draft.id);
+        void refreshMailbox(draft.accountId).catch(() => undefined);
+        router.back();
+        if (result.rejected.length) Alert.alert(result.accepted.length ? 'Some recipients were rejected' : 'Recipients rejected', `Accepted: ${result.accepted.length}. Rejected: ${result.rejected.join(', ')}. Review the addresses before sending a new message.`);
+      } catch (err) {
+        haptic('error');
+        setNeedsWorkerUpdate(err instanceof ApiError && err.code === 'WORKER_UPDATE_REQUIRED');
+        setError(err instanceof Error ? err.message : 'Could not send. Your draft has been kept.');
+        const uncertain = err instanceof ApiError && ['OFFLINE','SEND_UNKNOWN','SEND_IN_PROGRESS','SENT_COPY_PENDING','INTERNAL'].includes(err.code);
+        const pending = { ...draft, sendPending: uncertain || draft.sendPending, ...(err instanceof ApiError && err.code === 'SEND_REJECTED' ? { sendPending:false, sendKey:`${draft.id}-${Date.now()}` } : {}) };
+        setDraft(pending); saveDraft(pending);
+      } finally { sendingRef.current = false; setSending(false); }
+      return;
+    }
     const result = send(draft, {
       scheduledAt,
       reopen: (draftId) => router.push({ pathname: '/compose', params: { draftId } }),
@@ -164,6 +201,7 @@ export default function Compose() {
   };
 
   const close = () => {
+    if (sendingRef.current) return;
     const hasContent = dirty.current && draftHasContent(draft);
     if (!hasContent) {
       finished.current = true;
@@ -204,7 +242,8 @@ export default function Compose() {
     <>
       <View style={[styles.field, { borderBottomColor: c.separator }]}>
         <Text style={[styles.label, { color: c.secondaryLabel }]}>{label}</Text>
-        <TextBox
+        <TextInput
+          editable={!sending && !draft.sendPending}
           value={draft[field]}
           onChangeText={(v) => update({ [field]: v })}
           onFocus={() => setFocused(field)}
@@ -215,10 +254,11 @@ export default function Compose() {
           textContentType="emailAddress"
           autoComplete="email"
           autoFocus={field === 'to' && !draft.to && draft.mode !== 'reply' && draft.mode !== 'replyAll'}
-          boxStyle={{ flex: 1 }}
+          style={[styles.input, { color: c.label }]}
           placeholderTextColor={c.secondaryLabel}
           selectionColor={c.tint}
           cursorColor={c.tint}
+          underlineColorAndroid="transparent"
           accessibilityLabel={label}
           returnKeyType="next"
         />
@@ -255,26 +295,26 @@ export default function Compose() {
 
   return (
     <>
-      <Stack.Screen options={{ title: titles[draft.mode] }} />
+      <Stack.Screen options={{ title: sending ? 'Sending…' : titles[draft.mode], gestureEnabled: !sending }} />
       <Stack.Toolbar placement="left">
-        <Stack.Toolbar.Button icon={ToolbarIcon.close} accessibilityLabel="Close" onPress={close} />
+        <Stack.Toolbar.Button icon={ToolbarIcon.close} accessibilityLabel="Close" disabled={sending} onPress={() => { haptic(); return (close)(); }} />
       </Stack.Toolbar>
       <Stack.Toolbar placement="right">
-        <Stack.Toolbar.Button icon={ToolbarIcon.attach} accessibilityLabel="Attach files" onPress={attach} />
-        <Stack.Toolbar.Menu icon={ToolbarIcon.snooze} accessibilityLabel="Schedule send">
+        <Stack.Toolbar.Button icon={ToolbarIcon.attach} accessibilityLabel="Attach files" disabled={sending || draft.sendPending} onPress={() => { haptic(); return (attach)(); }} />
+        {!account.live ? <Stack.Toolbar.Menu icon={ToolbarIcon.snooze} accessibilityLabel="Schedule send">
           <Stack.Toolbar.Menu inline title="Schedule send">
-            <Stack.Toolbar.MenuAction icon={isIOS ? 'sunrise' : undefined} onPress={() => confirmAndSend(at(1, 8))}>
+            <Stack.Toolbar.MenuAction icon={isIOS ? 'sunrise' : undefined} onPress={() => { haptic(); return (() => confirmAndSend(at(1, 8)))(); }}>
               Tomorrow morning, 8:00
             </Stack.Toolbar.MenuAction>
-            <Stack.Toolbar.MenuAction icon={isIOS ? 'sun.max' : undefined} onPress={() => confirmAndSend(at(1, 13))}>
+            <Stack.Toolbar.MenuAction icon={isIOS ? 'sun.max' : undefined} onPress={() => { haptic(); return (() => confirmAndSend(at(1, 13)))(); }}>
               Tomorrow afternoon, 1:00
             </Stack.Toolbar.MenuAction>
-            <Stack.Toolbar.MenuAction icon={isIOS ? 'calendar' : undefined} onPress={() => confirmAndSend(nextMonday(8))}>
+            <Stack.Toolbar.MenuAction icon={isIOS ? 'calendar' : undefined} onPress={() => { haptic(); return (() => confirmAndSend(nextMonday(8)))(); }}>
               Monday morning, 8:00
             </Stack.Toolbar.MenuAction>
           </Stack.Toolbar.Menu>
-        </Stack.Toolbar.Menu>
-        <Stack.Toolbar.Button icon={ToolbarIcon.send} variant="prominent" accessibilityLabel="Send" onPress={() => confirmAndSend()} />
+        </Stack.Toolbar.Menu> : null}
+        <Stack.Toolbar.Button icon={ToolbarIcon.send} variant="prominent" disabled={sending || (account.live && !account.canSend)} accessibilityLabel={draft.sendPending ? 'Check sending status' : 'Send now'} onPress={() => { haptic(); return (() => confirmAndSend())(); }} />
       </Stack.Toolbar>
 
       <KeyboardAwareScrollView
@@ -284,7 +324,7 @@ export default function Compose() {
         keyboardDismissMode="interactive"
         contentInsetAdjustmentBehavior="automatic"
       >
-        {state.accounts.length > 1 ? (
+        {account.live || state.accounts.length > 1 ? (
           <Pressable onPress={pickFrom} style={[styles.field, { borderBottomColor: c.separator }]} accessibilityRole="button" accessibilityLabel={`From ${account.address}. Change`}>
             <Text style={[styles.label, { color: c.secondaryLabel }]}>From</Text>
             <Text style={[styles.input, { color: c.label }]} numberOfLines={1}>
@@ -295,19 +335,27 @@ export default function Compose() {
         ) : null}
 
         {renderField('to', 'To')}
+        {draft.sendPending ? <Text style={[styles.error,{color:c.secondaryLabel}]}>This draft has a pending sending attempt. Tap Send to check it or finish saving its Sent copy. Keep it unchanged to prevent duplicate delivery.</Text> : null}
         {error ? <Text style={[styles.error, { color: c.red }]}>{error}</Text> : null}
+        {needsWorkerUpdate ? workspace?.permissions.includes('domains.create') ? (
+          <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}>
+            <Button title="Update email service" variant="outline" onPress={() => { saveDraft(draft); router.push('/setup'); }} />
+          </View>
+        ) : <Text style={[styles.error, { color: c.secondaryLabel }]}>Ask your workspace admin to update Email setup. Your draft is saved.</Text> : null}
         {showCc ? renderField('cc', 'Cc') : null}
         {showCc ? renderField('bcc', 'Bcc') : null}
 
         <View style={[styles.field, { borderBottomColor: c.separator }]}>
-          <TextBox
+          <TextInput
+            editable={!sending && !draft.sendPending}
             value={draft.subject}
             onChangeText={(subject) => update({ subject })}
             placeholder="Subject"
             placeholderTextColor={c.secondaryLabel}
-          selectionColor={c.tint}
-          cursorColor={c.tint}
-            boxStyle={{ flex: 1 }}
+            selectionColor={c.tint}
+            cursorColor={c.tint}
+            underlineColorAndroid="transparent"
+            style={[styles.input, { color: c.label }]}
             returnKeyType="next"
             onSubmitEditing={() => bodyRef.current?.focus()}
             accessibilityLabel="Subject"
@@ -338,7 +386,8 @@ export default function Compose() {
           </View>
         ) : null}
 
-        <TextBox
+        <TextInput
+          editable={!sending && !draft.sendPending}
           ref={bodyRef}
           value={draft.body}
           onChangeText={(body) => update({ body })}
@@ -350,7 +399,7 @@ export default function Compose() {
           scrollEnabled={false}
           textAlignVertical="top"
           autoFocus={draft.mode === 'reply' || draft.mode === 'replyAll'}
-          boxStyle={{ margin: 16 }}
+          underlineColorAndroid="transparent"
           style={[styles.body, { color: c.label }]}
           accessibilityLabel="Message"
         />
@@ -360,13 +409,13 @@ export default function Compose() {
 }
 
 const styles = StyleSheet.create({
-  field: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 48, paddingHorizontal: 16, paddingTop: 12 },
+  field: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 48, paddingHorizontal: 16, borderBottomWidth: StyleSheet.hairlineWidth },
   label: { fontSize: 16, width: 44 },
-  input: { flex: 1, minWidth: 0, minHeight: 48, fontSize: 16, paddingVertical: 12 },
+  input: { flex: 1, minWidth: 0, fontSize: 16, paddingVertical: 12 },
   error: { fontSize: 14, paddingHorizontal: 16, paddingVertical: 8 },
   suggestions: { borderBottomWidth: StyleSheet.hairlineWidth },
   suggestion: { paddingHorizontal: 16, paddingLeft: 68, paddingVertical: 10 },
   attachments: { padding: 16, paddingBottom: 0, gap: 8 },
   attachment: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: StyleSheet.hairlineWidth, borderRadius: 10, padding: 10 },
-  body: { fontSize: 16, lineHeight: 23, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 24, minHeight: 320 },
+  body: { fontSize: 16, lineHeight: 23, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 120, minHeight: 320 },
 });

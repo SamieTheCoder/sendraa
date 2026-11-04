@@ -1,4 +1,5 @@
 import { simpleParser, type AddressObject, type ParsedMail } from 'mailparser';
+import type { TransactionSql } from 'postgres';
 import { sql } from '../db/index.js';
 import { buildSnippet, normaliseSubject } from '../lib/addresses.js';
 import { logger } from '../lib/logger.js';
@@ -154,7 +155,7 @@ class DuplicateMessage extends Error {
 }
 
 async function ensureSystemFolder(
-  tx: Parameters<Parameters<typeof sql.begin>[0]>[0],
+  tx: TransactionSql,
   mailboxId: string,
   type: 'inbox' | 'sent' | 'drafts' | 'archive' | 'spam' | 'trash',
 ): Promise<string> {

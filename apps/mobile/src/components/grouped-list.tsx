@@ -1,5 +1,6 @@
 import { Children, Fragment, isValidElement, type ReactNode } from 'react';
-import { Pressable, StyleSheet, Switch, Text, View, type ColorValue } from 'react-native';
+import { HapticPressable as Pressable } from '@/components/haptic-pressable';
+import { StyleSheet, Switch, Text, View, type ColorValue } from 'react-native';
 
 import type { AndroidSymbol } from 'expo-symbols';
 

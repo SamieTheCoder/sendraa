@@ -25,6 +25,7 @@ type State =
   | { status: 'error'; userId: string; message: string };
 
 let state: State = { status: 'idle' };
+let generation = 0;
 const listeners = new Set<() => void>();
 const set = (next: State) => {
   state = next;
@@ -32,18 +33,22 @@ const set = (next: State) => {
 };
 
 export async function loadMe(userId: string) {
+  const request = ++generation;
   if (state.status === 'idle' || ('userId' in state && state.userId !== userId)) set({ status: 'loading', userId });
   try {
     const me = await api<Me>('/v1/me');
+    if(request !== generation || me.user.id !== userId)return;
     const previous = state.status === 'ready' ? state.activeId : null;
     const activeId = me.workspaces.some((w) => w.id === previous) ? previous : (me.workspaces[0]?.id ?? null);
     set({ status: 'ready', userId, me, activeId });
   } catch (err) {
+    if(request !== generation)return;
     set({ status: 'error', userId, message: err instanceof Error ? err.message : 'Could not load your workspace.' });
   }
 }
 
 export function resetMe() {
+  generation++;
   // A fresh object would change the snapshot and re-run useMe's effect forever.
   if (state.status !== 'idle') set({ status: 'idle' });
 }

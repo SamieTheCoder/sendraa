@@ -1,0 +1,172 @@
+import assert from 'node:assert/strict';
+import { createHmac, randomUUID } from 'node:crypto';
+import { invitationEmail } from '../src/invite-template.js';
+import { extractOtp } from '../src/otp.js';
+import { rawMessage, type Outbound } from '../src/sending-provider.js';
+
+if(!['localhost','127.0.0.1'].includes(new URL(process.env.DATABASE_URL!).hostname))throw new Error('Local test database required');
+process.env.NODE_ENV='test';process.env.ALLOW_DEV_ADMIN_SIGNUP='true';process.env.CLOUDFLARE_CLIENT_ID='';process.env.CLOUDFLARE_CLIENT_SECRET='';process.env.BETTER_AUTH_URL='http://localhost:8787';
+const {app}=await import('../src/app.js');const {pool}=await import('../src/db.js');const {seal}=await import('../src/crypto.js');const {auth}=await import('../src/auth.js');
+const {enqueueMail,processPushQueue}=await import('../src/push.js');
+const oldFetch=globalThis.fetch;const oldAccess=auth.api.getAccessToken;
+(auth.api as {getAccessToken:unknown}).getAccessToken=async()=>({accessToken:'test'});
+let checks=0;const check=(name:string,value:unknown)=>{assert.ok(value,name);checks++;console.log(`PASS ${name}`);};
+const users:string[]=[];let tid:string|undefined;let sent:Record<string,any>|undefined;let push:Record<string,any>|undefined;let pushes=0;let important=false;let pushError:string|null=null;
+let messageId=randomUUID();const threadId=randomUUID();const secret='test-only-hook-secret';
+let deleteFailure=false;let deleteCalls=0;
+const originalLog=console.log;
+console.log=(...args:unknown[])=>{if(!String(args[0]).includes('/v1/')&&!String(args[0]).includes('/api/auth/'))originalLog(...args);};
+globalThis.fetch=async(input,init)=>{
+  const url=String(input);
+  if(url.startsWith('https://worker.test/')) {
+    if(url.endsWith('/v1/health'))return Response.json({ok:true,capabilities:['outbound','mailbox-delete']});
+    if(init?.method==='DELETE'){deleteCalls++;return deleteFailure?new Response('',{status:503}):Response.json({done:true});}
+    if(url.includes('/threads/'))return Response.json({id:threadId,location:'inbox',important,subject:'Your verification code',messages:[{id:messageId,text:'Your verification code is 482917. It expires soon.',html:null}]});
+    return Response.json({ok:true});
+  }
+  if(url.startsWith('https://api.cloudflare.com/')&&url.endsWith('/send')) {
+    sent=JSON.parse(String(init?.body));return Response.json({success:true,result:{delivered:sent!.to.map((a:{address:string})=>a.address),queued:[],permanent_bounces:[],message_id:'invite-test'},errors:[]});
+  }
+  if(url==='https://exp.host/--/api/v2/push/send') {
+    pushes++;push=JSON.parse(String(init?.body));return Response.json({data:pushError?{status:'error',details:{error:pushError}}:{status:'ok',id:randomUUID()}});
+  }
+  if(url==='https://exp.host/--/api/v2/push/getReceipts') {
+    const ids=JSON.parse(String(init?.body)).ids as string[];return Response.json({data:Object.fromEntries(ids.map((id)=>[id,{status:'ok'}]))});
+  }
+  throw new Error('External network forbidden in tests');
+};
+let cookie='';
+async function call(path:string,body?:unknown,method=body===undefined?'GET':'POST',authenticated=true) {
+  const r=await app.request(`http://localhost:8787${path}`,{method,headers:{'content-type':'application/json',origin:'http://localhost:8787',...(authenticated?{cookie}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});
+  return {status:r.status,body:await r.json() as Record<string,any>,response:r};
+}
+try {
+  check('extracts contextual numeric code',extractOtp('Sign in','Your verification code is 482917.',null)==='482917');
+  check('ignores order numbers',extractOtp('Order 482917','Your order is ready.',null)===null);
+  check('refuses ambiguous codes',extractOtp('Verification code','Code is 482917 or 173824.',null)===null);
+  check('handles HTML-only message',extractOtp('Security code',null,'<p>Your security code is <b>482917</b>.</p>')==='482917');
+  check('does not match part of phone number',extractOtp('Verification code','Call +12345678901 for help.',null)===null);
+  const template=invitationEmail({workspace:'Team <script>alert(1)</script>',email:'member@example.invalid',address:'member@work.invalid',link:'https://example.invalid/invite/test',logoUrl:'https://example.invalid/logo.png',days:7});
+  check('HTML escapes workspace names and contains branded CTA',!template.html.includes('<script>')&&template.html.includes('Accept invitation')&&template.html.includes('<img'));
+  const raw=await rawMessage({requestKey:'invite-test',from:{address:'admin@work.invalid',name:'Workspace'},to:[{address:'member@example.invalid',name:''}],cc:[],bcc:[],subject:'Join',...template,attachments:[],threadId:null,inReplyTo:null,references:[],date:new Date().toISOString(),messageId:'<test@work.invalid>'} satisfies Outbound);
+  check('Gmail MIME includes HTML and plain text alternatives',raw.toString().includes('multipart/alternative')&&raw.toString().includes('text/html')&&raw.toString().includes('text/plain'));
+  const suffix=randomUUID();
+  const signup=await call('/api/auth/sign-up/email',{name:'Invite test',email:`test-${suffix}@example.invalid`,password:'test-only-long-password'},'POST',false);
+  assert.equal(signup.status,200);const uid=signup.body.user.id as string;users.push(uid);cookie=signup.response.headers.getSetCookie().map((c)=>c.split(';')[0]).join('; ');
+  const session=(await pool.query('select id from session where "userId"=$1',[uid])).rows[0].id;
+  tid=(await pool.query("insert into tenant(name,created_by,setup_status,worker_url,worker_secret_enc,cloudflare_user_id,cloudflare_account_id) values('Invitation test',$1,'ready','https://worker.test',$2,$1,$3) returning id",[uid,seal(secret),suffix.replaceAll('-','')])).rows[0].id;
+  await pool.query('insert into tenant_member(tenant_id,user_id) values($1,$2)',[tid,uid]);
+  await pool.query("insert into iam_binding(tenant_id,resource,role,user_id) values($1,$2,'roles/owner',$3)",[tid,`tenants/${tid}`,uid]);
+  await pool.query('insert into account(id,"accountId","providerId","userId","createdAt","updatedAt") values($1,$2,$3,$4,now(),now())',[randomUUID(),'cf','cloudflare',uid]);
+  const domain=(await pool.query('insert into domain(tenant_id,name,zone_id,verified_at) values($1,$2,$3,now()) returning id',[tid,`${suffix}.invalid`,'b'.repeat(32)])).rows[0];
+  const mid=(await pool.query("insert into mailbox(tenant_id,domain_id,address,owner_user_id) values($1,$2,$3,$4) returning id",[tid,domain.id,`admin@${suffix}.invalid`,uid])).rows[0].id;
+  await pool.query("insert into sending_config(tenant_id,provider,default_mailbox_id) values($1,'cloudflare',$2)",[tid,mid]);
+  check('default sender rejects foreign mailbox',(await call(`/v1/tenants/${tid}/sending/default`,{mailboxId:randomUUID()},'PUT')).status===404);
+  const personalSignup=await call('/api/auth/sign-up/email',{name:'Personal identity',email:`member-${suffix}@example.invalid`,password:'personal-only-password'},'POST',false);
+  assert.equal(personalSignup.status,200);const personalUserId=personalSignup.body.user.id;users.push(personalUserId);
+  const invite=await call(`/v1/tenants/${tid}/invites`,{email:`member-${suffix}@example.invalid`,emailInvite:true,role:'roles/mailUser',newMailbox:{localPart:'priya',domainId:domain.id,displayName:'Priya'}});
+  assert.equal(invite.status,201,JSON.stringify(invite.body));
+  check('creates mailbox and invitation together',Boolean(invite.body.mailbox?.id)&&invite.body.emailSent);
+  check('invitation uses default admin sender and personal recipient',sent?.from.address===`admin@${suffix}.invalid`&&sent?.to[0].address===`member-${suffix}@example.invalid`);
+  check('branded email contains work address and HTTPS acceptance link',sent?.html.includes(`priya@${suffix}.invalid`)&&sent?.html.includes(invite.body.webUrl)&&sent?.text.includes('Sign-in email:'));
+  const landing=await app.request(invite.body.webUrl);check('HTTPS link opens functioning app landing page',landing.status===200&&(await landing.text()).includes('sendraa://invite/'));
+  const token=invite.body.inviteUrl.split('/').at(-1);
+  const preview=await call(`/v1/invites/${token}`,undefined,'GET',false);
+  check('existing personal account does not block work signup',preview.body.separateAccount===true&&preview.body.hasAccount===false&&preview.body.loginEmail===`priya@${suffix}.invalid`);
+  const directSignup=await app.request('http://localhost:8787/api/auth/sign-up/email',{method:'POST',headers:{'content-type':'application/json','x-sendraa-invite':token},body:JSON.stringify({name:'Bypass',email:`priya@${suffix}.invalid`,password:'test-only-long-password'})});
+  check('work signup cannot bypass atomic invite acceptance',directSignup.status===403);
+  const accept=await call('/v1/invites/accept',{token,name:'Priya',password:'test-only-long-password'},'POST',false);check('invitee creates separate work login',accept.status===200&&accept.body.loginEmail===`priya@${suffix}.invalid`);
+  const member=(await pool.query('select id from "user" where email=$1',[`priya@${suffix}.invalid`])).rows[0];users.push(member.id);
+  check('work identity is separate from personal account',member.id!==personalUserId&&!(await pool.query('select 1 from iam_binding where user_id=$1',[personalUserId])).rowCount);
+  check('invitation recipient becomes verified recovery address',(await pool.query('select recovery_email from account_security where user_id=$1 and recovery_verified_at is not null',[member.id])).rows[0]?.recovery_email===`member-${suffix}@example.invalid`);
+  check('accepted invite cannot reset a work password',(await call('/v1/invites/accept',{token,name:'Other',password:'overwrite-attempt-password'},'POST',false)).status===404);
+  const grants=(await pool.query('select resource,role from iam_binding where user_id=$1',[member.id])).rows;
+  check('new user gets only the new work mailbox',grants.length===1&&grants[0].resource===`tenants/${tid}/mailboxes/${invite.body.mailbox.id}`&&grants[0].role==='roles/mailUser');
+  const invalid=await call(`/v1/tenants/${tid}/invites`,{email:'other@example.invalid',role:'roles/owner',newMailbox:{localPart:'blocked',domainId:domain.id}});
+  check('combined flow refuses privilege escalation',invalid.status===400);
+  check('duplicate work address is actionable',(await call(`/v1/tenants/${tid}/invites`,{email:'other@example.invalid',role:'roles/mailUser',newMailbox:{localPart:'priya',domainId:domain.id}})).body.error.code==='MAILBOX_EXISTS');
+  const personal=invite.body.mailbox.id as string;const personalResource=`tenants/${tid}/mailboxes/${personal}`;
+  const personalPath=`/v1/tenants/${tid}/mailboxes/${personal}`;
+  check('workspace owner cannot list another personal inbox',!(await call(`/v1/tenants/${tid}/mailboxes`)).body.mailboxes.some((m:{id:string})=>m.id===personal));
+  check('workspace owner cannot read private messages',(await call(`${personalPath}/threads/${threadId}`)).status===403);
+  check('workspace owner cannot send as personal user',(await call(`${personalPath}/send`,{})).status===403);
+  check('admin cannot use personal mailbox as default sender',(await call(`/v1/tenants/${tid}/sending/default`,{mailboxId:personal},'PUT')).status===403);
+  check('workspace owner cannot grant self private access',(await call(`${personalPath}/access`,{userId:uid,role:'roles/mailUser'},'PUT')).status===403);
+  check('generic IAM cannot bypass private mailbox ownership',(await call(`/v1/tenants/${tid}/iam/bindings`,{resource:personalResource,role:'roles/mailUser',userId:uid})).status===403);
+  check('admin cannot invite a second user into a personal mailbox',(await call(`/v1/tenants/${tid}/invites`,{email:'intruder@example.invalid',resource:personalResource,role:'roles/mailUser'})).status===403);
+  const login=await call('/api/auth/sign-in/email',{email:`priya@${suffix}.invalid`,password:'test-only-long-password'},'POST',false);
+  check('invited user signs in with custom work email and chosen password',login.status===200&&login.body.user.id===member.id);
+  const adminCookie=cookie;cookie=login.response.headers.getSetCookie().map((c)=>c.split(';')[0]).join('; ');
+  check('personal owner can read own mailbox',(await call(`${personalPath}/threads/${threadId}`)).status===200);
+  check('personal user cannot delete workspace mailboxes',(await call(personalPath,{confirmAddress:`priya@${suffix}.invalid`},'DELETE')).status===403);
+  cookie=adminCookie;
+  await pool.query("insert into iam_binding(tenant_id,resource,role,user_id) values($1,$2,'roles/owner',$3)",[tid,`tenants/${tid}`,member.id]);
+  check('work account with workspace ownership cannot be deleted',(await call(personalPath,{confirmAddress:`priya@${suffix}.invalid`},'DELETE')).body.error?.code==='ACCOUNT_IN_USE');
+  await pool.query("delete from iam_binding where resource=$1 and user_id=$2 and role='roles/owner'",[`tenants/${tid}`,member.id]);
+  check('deletion needs matching typed address',(await call(personalPath,{confirmAddress:'wrong@example.invalid'},'DELETE')).status===400&&deleteCalls===0);
+  check('default sender cannot be deleted',(await call(`/v1/tenants/${tid}/mailboxes/${mid}`,{confirmAddress:`admin@${suffix}.invalid`},'DELETE')).status===409);
+  await pool.query('update sending_config set allowed_from=$2::jsonb where tenant_id=$1',[tid,JSON.stringify([`admin@${suffix}.invalid`,`priya@${suffix}.invalid`])]);
+  deleteFailure=true;
+  check('failed Worker deletion is retryable',(await call(personalPath,{confirmAddress:`priya@${suffix}.invalid`},'DELETE')).status===502);
+  cookie=login.response.headers.getSetCookie().map((c)=>c.split(';')[0]).join('; ');
+  check('deleting mailbox immediately revokes work session',(await call(`${personalPath}/threads/${threadId}`)).status===401);
+  check('deleting work account cannot sign in again',(await call('/api/auth/sign-in/email',{email:`priya@${suffix}.invalid`,password:'test-only-long-password'},'POST',false)).status===401);
+  cookie=adminCookie;deleteFailure=false;
+  check('deletion retries complete without exposing mail',(await call(personalPath,{confirmAddress:`priya@${suffix}.invalid`},'DELETE')).body.done===true);
+  check('deletion removes mailbox bindings and login alias',!(await pool.query('select 1 from iam_binding where resource=$1',[personalResource])).rowCount&&!(await pool.query('select 1 from login_alias where mailbox_id=$1',[personal])).rowCount);
+  check('deletion removes dedicated work login but keeps personal identity and other mailboxes',!(await pool.query('select 1 from "user" where id=$1',[member.id])).rowCount&&!!(await pool.query('select 1 from "user" where id=$1',[personalUserId])).rowCount&&!!(await pool.query('select 1 from mailbox where id=$1',[mid])).rowCount);
+  check('deletion clears only the deleted sender approval',JSON.stringify((await pool.query('select allowed_from from sending_config where tenant_id=$1',[tid])).rows[0].allowed_from)===JSON.stringify([`admin@${suffix}.invalid`]));
+  check('deleted work email no longer signs in',(await call('/api/auth/sign-in/email',{email:`priya@${suffix}.invalid`,password:'test-only-long-password'},'POST',false)).status===401);
+  const recreated=await call(`/v1/tenants/${tid}/invites`,{email:`member-${suffix}@example.invalid`,role:'roles/mailUser',newMailbox:{localPart:'priya',domainId:domain.id}});
+  check('deleted address can be invited again with a fresh mailbox',recreated.status===201&&recreated.body.mailbox.id!==personal);
+  check('old invitation cannot open the recreated mailbox',(await call(`/v1/invites/${token}`,undefined,'GET',false)).status===404);
+  const second=await call(`/v1/tenants/${tid}/invites`,{email:`member-${suffix}@example.invalid`,role:'roles/mailUser',newMailbox:{localPart:'second',domainId:domain.id}});
+  const recreatedToken=recreated.body.inviteUrl.split('/').at(-1);
+  check('same recipient can hold invitations for separate work addresses',second.status===201&&(await call(`/v1/invites/${recreatedToken}`,undefined,'GET',false)).status===200);
+  const raced=await Promise.all([call('/v1/invites/accept',{token:recreatedToken,name:'New owner',password:'new-work-only-password'},'POST',false),call('/v1/invites/accept',{token:recreatedToken,name:'New owner',password:'new-work-only-password'},'POST',false)]);
+  check('concurrent acceptance creates exactly one account',raced.filter((r)=>r.status===200).length===1&&raced.filter((r)=>[404,409].includes(r.status)).length===1);
+  const newLogin=await call('/api/auth/sign-in/email',{email:`priya@${suffix}.invalid`,password:'new-work-only-password'},'POST',false);
+  check('recreated mailbox has a fresh working identity',newLogin.status===200&&newLogin.body.user.id!==member.id);users.push(newLogin.body.user.id);
+  check('old work password cannot access recreated mailbox',(await call('/api/auth/sign-in/email',{email:`priya@${suffix}.invalid`,password:'test-only-long-password'},'POST',false)).status===401);
+  check('personal login password remains unchanged',(await call('/api/auth/sign-in/email',{email:`member-${suffix}@example.invalid`,password:'personal-only-password'},'POST',false)).body.user?.id===personalUserId);
+  check('unaccepted mailbox can be deleted',(await call(`/v1/tenants/${tid}/mailboxes/${second.body.mailbox.id}`,{confirmAddress:`second@${suffix}.invalid`},'DELETE')).body.done===true);
+  check('deleted mailbox invitation is revoked',(await call(`/v1/invites/${second.body.inviteUrl.split('/').at(-1)}`,undefined,'GET',false)).status===404);
+  const legacy=(await pool.query('insert into mailbox(tenant_id,domain_id,address,owner_user_id) values($1,$2,$3,$4) returning id',[tid,domain.id,`legacy@${suffix}.invalid`,personalUserId])).rows[0];
+  await pool.query('insert into login_alias(address,user_id,mailbox_id) values($1,$2,$3)',[`legacy@${suffix}.invalid`,personalUserId,legacy.id]);
+  check('legacy mailbox deletion preserves existing personal account',(await call(`/v1/tenants/${tid}/mailboxes/${legacy.id}`,{confirmAddress:`legacy@${suffix}.invalid`},'DELETE')).body.done===true&&!!(await pool.query('select 1 from "user" where id=$1',[personalUserId])).rowCount);
+  const deviceId=randomUUID();const registration={token:`ExpoPushToken[test_${suffix}]`,platform:'ios',preference:'all',copyOtp:true};
+  check('device registration needs authentication',(await call(`/v1/devices/${deviceId}`,registration,'PUT',false)).status===401);
+  check('registers device against current session',(await call(`/v1/devices/${deviceId}`,registration,'PUT')).status===200);
+  check('device row has session binding',(await pool.query('select session_id from push_device where id=$1',[deviceId])).rows[0].session_id===session);
+  const event=()=>({tenantId:tid!,mailboxId:mid,threadId,messageId});
+  const hook=JSON.stringify({...event(),event:'message.received'});const ts=Math.floor(Date.now()/1000);const signature=createHmac('sha256',secret).update(`${ts}.${hook}`).digest('hex');
+  check('unsigned webhooks are rejected',(await app.request('/v1/hooks/mail',{method:'POST',body:hook})).status===401);
+  const sendHook=()=>app.request('/v1/hooks/mail',{method:'POST',headers:{'x-sendraa-signature':`t=${ts},v1=${signature}`},body:hook});
+  check('signed webhook enqueues mail',(await sendHook()).status===204);await sendHook();
+  check('duplicate webhook makes one delivery',(await pool.query('select * from push_delivery where device_id=$1',[deviceId])).rows.length===1);
+  await processPushQueue();
+  check('Expo receives OTP action without code or content',pushes===1&&push?.categoryId==='mail_otp'&&!JSON.stringify(push).includes('482917')&&!JSON.stringify(push).includes('expires soon'));
+  const otpPath=`/v1/tenants/${tid}/mailboxes/${mid}/threads/${threadId}/messages/${messageId}/otp`;
+  check('copy endpoint requires session',(await call(otpPath,undefined,'GET',false)).status===401);
+  check('copy endpoint returns code with no-store',(await call(otpPath)).body.code==='482917'&&(await call(otpPath)).response.headers.get('cache-control')?.includes('no-store'));
+  await pool.query("update push_event set created_at=now()-interval '16 minutes' where tenant_id=$1",[tid]);
+  check('old OTP action expires',(await call(otpPath)).body.error.code==='OTP_EXPIRED');
+  await pool.query("update push_delivery set next_attempt_at=now() where device_id=$1",[deviceId]);await processPushQueue();
+  check('Expo receipts update delivery status',(await pool.query('select status from push_delivery where device_id=$1',[deviceId])).rows[0].status==='delivered');
+  messageId=randomUUID();await enqueueMail(event());await pool.query("update iam_binding set role='roles/mailboxAdmin' where tenant_id=$1 and user_id=$2",[tid,uid]);await processPushQueue();
+  check('revoked mail read access cancels pending push',pushes===1);
+  check('revoked mail access cannot copy code',(await call(`/v1/tenants/${tid}/mailboxes/${mid}/threads/${threadId}/messages/${messageId}/otp`)).status===403);
+  messageId=randomUUID();await enqueueMail(event());check('mailbox managers without read access get no jobs',(await pool.query('select count(*)::int n from push_delivery where device_id=$1',[deviceId])).rows[0].n===2);
+  await pool.query("update iam_binding set role='roles/owner' where tenant_id=$1 and user_id=$2",[tid,uid]);
+  await call(`/v1/devices/${deviceId}`,{...registration,preference:'important'},'PUT');messageId=randomUUID();await enqueueMail(event());await processPushQueue();check('important preference suppresses ordinary mail',pushes===1);
+  important=true;messageId=randomUUID();await enqueueMail(event());await processPushQueue();check('important preference delivers important mail',pushes===2);
+  await call(`/v1/devices/${deviceId}`,{...registration,copyOtp:false},'PUT');messageId=randomUUID();await enqueueMail(event());await processPushQueue();check('OTP action can be disabled',push?.categoryId===undefined);
+  pushError='DeviceNotRegistered';messageId=randomUUID();await enqueueMail(event());await processPushQueue();check('invalid Expo tokens are removed',(await pool.query('select id from push_device where id=$1',[deviceId])).rows.length===0);
+  await call(`/v1/devices/${deviceId}`,registration,'PUT');await pool.query('delete from session where id=$1',[session]);check('sign-out removes push destination',(await pool.query('select id from push_device where id=$1',[deviceId])).rows.length===0);
+  console.log(`${checks} invitation and push checks passed. No real email or push sent.`);
+} finally {
+  globalThis.fetch=oldFetch;(auth.api as {getAccessToken:unknown}).getAccessToken=oldAccess;console.log=originalLog;
+  if(tid)await pool.query('delete from tenant where id=$1',[tid]);
+  for(const id of users)await pool.query('delete from "user" where id=$1',[id]);
+  await pool.end();
+}

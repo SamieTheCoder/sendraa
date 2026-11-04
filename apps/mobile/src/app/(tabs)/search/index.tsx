@@ -1,6 +1,7 @@
 import { Stack, useFocusEffect, useNavigation } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef, type ComponentProps } from 'react';
-import { FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { HapticPressable as Pressable } from '@/components/haptic-pressable';
+import { FlatList, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { TextBox } from '@/components/form';
 import { EmptyState } from '@/components/empty-state';

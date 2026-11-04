@@ -1,12 +1,14 @@
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { router, Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { HapticPressable as Pressable } from '@/components/haptic-pressable';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { Button, ErrorText, Field } from '@/components/form';
 import { Icon } from '@/components/icon';
 import { ApiError, api } from '@/lib/api';
 import { authClient, authReturnURL } from '@/lib/auth-client';
+import { signOutCurrentAccount } from '@/lib/account-sessions';
 import { getMe, loadMe } from '@/lib/workspace';
 import { useColors } from '@/theme/colors';
 
@@ -69,6 +71,7 @@ export default function Onboarding() {
   };
 
   const reconnect = () => authClient.signIn.social({ provider: 'cloudflare' as never, callbackURL: authReturnURL('/') });
+  const signOut = () => void signOutCurrentAccount().catch((err) => fail(err, 'Could not sign out. Try again.'));
 
   if (!me?.canCreateWorkspace) {
     return (
@@ -80,7 +83,8 @@ export default function Onboarding() {
         <Text style={[styles.body, { color: c.secondaryLabel }]}>
           Ask your workspace admin to invite {me?.user.email ?? 'you'}, then open the link in the invite. Admins who want to set up a new workspace sign in with Cloudflare.
         </Text>
-        <Button variant="plain" title="Sign out" onPress={() => authClient.signOut()} />
+        <ErrorText>{error}</ErrorText>
+        <Button variant="plain" title="Sign out" onPress={signOut} />
       </KeyboardAwareScrollView>
     );
   }
@@ -149,7 +153,7 @@ export default function Onboarding() {
         <ErrorText>{error}</ErrorText>
         {needsReauth ? <Button title="Sign in with Cloudflare again" onPress={reconnect} /> : null}
         <Button variant="brand" title="Create workspace" onPress={create} loading={busy} disabled={viaCloudflare && !accountId} />
-        <Button variant="plain" title="Sign out" onPress={() => authClient.signOut()} />
+        <Button variant="plain" title="Sign out" onPress={signOut} />
       </KeyboardAwareScrollView>
     </View>
   );

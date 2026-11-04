@@ -1,4 +1,5 @@
 import { expoClient } from '@better-auth/expo/client';
+import { multiSessionClient } from 'better-auth/client/plugins';
 import { createAuthClient } from 'better-auth/react';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
@@ -14,6 +15,7 @@ export const authClient = createAuthClient({
   baseURL: API_URL,
   fetchOptions: { onError: ({ response }) => recordAuthRateLimit(response) },
   plugins: [
+    multiSessionClient(),
     expoClient({
       scheme: 'sendraa',
       storagePrefix: 'sendraa',

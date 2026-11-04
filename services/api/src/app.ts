@@ -5,12 +5,14 @@ import { cors } from 'hono/cors';
 import { APIError } from 'better-auth/api';
 
 import { INVITE_HEADER, auth } from './auth.js';
-import { cloudflareConfigured, devAdminSignup, env, recoveryConfigured } from './env.js';
+import { androidSigningFingerprints, cloudflareConfigured, devAdminSignup, env, recoveryConfigured } from './env.js';
 import { isWebOrigin } from './web-origins.js';
 import { IamError } from './iam/policy.js';
 import { cloudflare } from './routes/cloudflare.js';
+import { notifications } from './routes/notifications.js';
 import { hooks } from './routes/hooks.js';
 import { mail } from './routes/mail.js';
+import { sending } from './routes/sending.js';
 import { invites } from './routes/invites.js';
 import { tenants } from './routes/tenants.js';
 import { security } from './routes/security.js';
@@ -20,9 +22,9 @@ export const app = new Hono();
 
 app.use('*', secureHeaders());
 // Auth callback URLs contain authorization codes; never put their query strings in logs.
-app.use('*', logger((message) => console.log(message.replace(/\?[^\s]*/g, '?[redacted]'))));
+app.use('*', logger((message) => console.log(message.replace(/\?[^\s]*/g, '?[redacted]').replace(/(\/invites?\/)[A-Za-z0-9_-]{40,}/g, '$1[redacted]'))));
 
-app.get('/health', (c) => c.json({ ok: true }));
+app.get('/health', (c) => c.json({ ok: true, capabilities: ['sending-config-v1', 'mailbox-management-v1', 'workspace-invites-v2', 'work-mailbox-accounts-v1', 'push-notifications-v1', 'deferred-mime-v1', 'multi-session-v1'] }));
 // Capability discovery is public and contains no user data or credentials.
 app.use('/v1/auth/providers', cors({ origin: '*', allowMethods: ['GET'] }));
 
@@ -55,19 +57,21 @@ app.use('/v1/*', sameOriginWrites);
  * `devSignup` is only ever true on a local server with ALLOW_DEV_ADMIN_SIGNUP.
  */
 app.get('/v1/auth/providers', (c) => c.json({ cloudflare: cloudflareConfigured, password: true, devSignup: devAdminSignup, recovery: recoveryConfigured,
-  passkey: { ios: Boolean(env.PASSKEY_RP_ID && env.APPLE_APP_ID), android: Boolean(env.PASSKEY_RP_ID && env.ANDROID_SHA256_FINGERPRINTS), web: Boolean(env.PASSKEY_RP_ID) } }));
+  passkey: { ios: Boolean(env.PASSKEY_RP_ID && env.APPLE_APP_ID), android: Boolean(env.PASSKEY_RP_ID && androidSigningFingerprints.length), web: Boolean(env.PASSKEY_RP_ID) } }));
 
 app.route('/', accountPages);
 app.get('/.well-known/apple-app-site-association', (c) => c.json({ webcredentials: { apps: env.APPLE_APP_ID ? [env.APPLE_APP_ID] : [] } }));
-app.get('/.well-known/assetlinks.json', (c) => c.json(env.ANDROID_SHA256_FINGERPRINTS ? [{ relation: ['delegate_permission/common.get_login_creds'], target: { namespace: 'android_app', package_name: env.ANDROID_PACKAGE, sha256_cert_fingerprints: env.ANDROID_SHA256_FINGERPRINTS.split(',').map((x) => x.trim()) } }] : []));
+app.get('/.well-known/assetlinks.json', (c) => c.json(androidSigningFingerprints.length ? [{ relation: ['delegate_permission/common.get_login_creds'], target: { namespace: 'android_app', package_name: env.ANDROID_PACKAGE, sha256_cert_fingerprints: androidSigningFingerprints } }] : []));
 
 app.on(['GET', 'POST'], '/api/auth/*', (c) => auth.handler(c.req.raw));
 
 app.route('/v1', invites);
 app.route('/v1', security);
 app.route('/v1', hooks);
+app.route('/v1', notifications);
 app.route('/v1', cloudflare);
 app.route('/v1', mail);
+app.route('/v1', sending);
 app.route('/v1', tenants);
 
 app.onError((err, c) => {

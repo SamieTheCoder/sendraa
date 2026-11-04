@@ -5,6 +5,7 @@ import { body, requireSession, uuid, type AppEnv } from '../http.js';
 import { IamError, authorize, resolveResource } from '../iam/policy.js';
 import { mailboxResource, type Permission } from '../iam/roles.js';
 import { readyWorker, workerFetch } from '../worker-client.js';
+import { parseStoredMessage } from '../parse-mail.js';
 
 /**
  * Mail, proxied to the tenant's Worker (ARCHITECTURE.md: "Mail access: proxied
@@ -57,7 +58,17 @@ mail.get('/tenants/:tid/mailboxes/:mid/threads', async (c) => {
 mail.get('/tenants/:tid/mailboxes/:mid/threads/:thid', async (c) => {
   const { worker, mailboxId } = await gate(c, 'mail.read');
   const res = await workerFetch(worker, 'GET', `/v1/mailboxes/${mailboxId}/threads/${id(c.req.param('thid'))}`);
-  return c.json(await relay(res));
+  const thread=await relay(res) as {messages:{id:string;needsParse:boolean;parseError?:string}[]};
+  const failures=new Map<string,string>();
+  let parsed=false;
+  for(const message of thread.messages ?? [])if(message.needsParse) {
+    try {await parseStoredMessage(worker,mailboxId,message.id);parsed=true;}
+    catch(error){failures.set(message.id,error instanceof Error?error.message:'Could not process this message. Tap Retry.');}
+  }
+  const updated=parsed?await relay(await workerFetch(worker,'GET',`/v1/mailboxes/${mailboxId}/threads/${id(c.req.param('thid'))}`)) as typeof thread:thread;
+  for(const message of updated.messages ?? [])if(failures.has(message.id))message.parseError=failures.get(message.id);
+  c.header('cache-control','private, no-store');
+  return c.json(updated);
 });
 
 const patchInput = z

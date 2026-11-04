@@ -1,5 +1,6 @@
 import { forwardRef, useState, type ComponentRef, type ReactNode } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View, type StyleProp, type TextInputProps, type ViewStyle } from 'react-native';
+import { HapticPressable as Pressable } from '@/components/haptic-pressable';
+import { ActivityIndicator, StyleSheet, Text, TextInput, View, type StyleProp, type TextInputProps, type ViewStyle } from 'react-native';
 
 import { Icon } from '@/components/icon';
 import { Brand, useColors } from '@/theme/colors';

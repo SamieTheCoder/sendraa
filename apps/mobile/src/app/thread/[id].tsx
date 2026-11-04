@@ -1,12 +1,15 @@
-import * as Haptics from 'expo-haptics';
+import { haptic } from '@/lib/haptics';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View, type ColorValue } from 'react-native';
+import { HapticPressable as Pressable } from '@/components/haptic-pressable';
+import { ScrollView, StyleSheet, Text, View, type ColorValue } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Avatar } from '@/components/avatar';
 import { EmptyState } from '@/components/empty-state';
 import { Icon } from '@/components/icon';
+import { Button } from '@/components/form';
+import { MessageBody } from '@/components/message-body';
 import { displayName, fileSize, formatAddress, fullTime, listTime, snippet } from '@/mail/format';
 import {
   archive,
@@ -46,10 +49,21 @@ export default function ThreadScreen() {
 
   // Server conversations arrive as a summary; fetch the messages on open.
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const reload = async () => {
+    if (loading) return;
+    setLoading(true); setLoadError(null);
+    try { await loadThread(id, true); }
+    catch (err) { setLoadError(err instanceof Error ? err.message : 'Could not load this conversation.'); }
+    finally { setLoading(false); }
+  };
   useEffect(() => {
-    if (!thread?.remote || thread.remote.loaded) return;
-    loadThread(thread.id).catch((err) => setLoadError(err instanceof Error ? err.message : 'Could not load this conversation.'));
-  }, [thread?.id, thread?.remote]);
+    let mounted = true;
+    loadThread(id, true).catch((err) => {
+      if (mounted) setLoadError(err instanceof Error ? err.message : 'Could not load this conversation.');
+    }).finally(() => { if (mounted) setLoading(false); });
+    return () => { mounted = false; };
+  }, [id]);
 
   // The newest message is already expanded by the row expression below.
   const [now, setNow] = useState(() => Date.now());
@@ -89,49 +103,49 @@ export default function ThreadScreen() {
 
       <Stack.Toolbar placement="right">
         {thread.location === 'inbox' ? (
-          <Stack.Toolbar.Button icon={ToolbarIcon.archive} accessibilityLabel="Archive" onPress={close(archive)} />
+          <Stack.Toolbar.Button icon={ToolbarIcon.archive} accessibilityLabel="Archive" onPress={() => { haptic(); return (close(archive))(); }} />
         ) : !scheduled ? (
-          <Stack.Toolbar.Button icon={ToolbarIcon.unarchive} accessibilityLabel="Move to Inbox" onPress={close(moveToInbox)} />
+          <Stack.Toolbar.Button icon={ToolbarIcon.unarchive} accessibilityLabel="Move to Inbox" onPress={() => { haptic(); return (close(moveToInbox))(); }} />
         ) : null}
         <Stack.Toolbar.Button
           icon={ToolbarIcon.trash}
           accessibilityLabel={thread.location === 'trash' ? 'Delete forever' : 'Move to Trash'}
-          onPress={close(thread.location === 'trash' ? deleteForever : trash)}
+          onPress={() => { haptic(); return (close(thread.location === 'trash' ? deleteForever : trash))(); }}
         />
-        <Stack.Toolbar.Button icon={ToolbarIcon.unread} accessibilityLabel="Mark as unread" onPress={close((x) => markRead(x, false))} />
+        <Stack.Toolbar.Button icon={ToolbarIcon.unread} accessibilityLabel="Mark as unread" onPress={() => { haptic(); return (close((x) => markRead(x, false)))(); }} />
         <Stack.Toolbar.Menu icon={ToolbarIcon.more} accessibilityLabel="More actions">
           {scheduled ? (
             <Stack.Toolbar.MenuAction
               icon={isIOS ? 'xmark.circle' : undefined}
-              onPress={() => {
+              onPress={() => { haptic(); return (() => {
                 router.back();
                 cancelScheduled(thread.id, (draftId) => router.push({ pathname: '/compose', params: { draftId } }));
-              }}
+              })(); }}
             >
               Cancel send
             </Stack.Toolbar.MenuAction>
           ) : null}
-          <Stack.Toolbar.MenuAction icon={isIOS ? 'folder' : undefined} onPress={() => router.push({ pathname: '/organize', params: { ids: thread.id, close: '1' } })}>
+          <Stack.Toolbar.MenuAction icon={isIOS ? 'folder' : undefined} onPress={() => { haptic(); return (() => router.push({ pathname: '/organize', params: { ids: thread.id, close: '1' } }))(); }}>
             Move and label
           </Stack.Toolbar.MenuAction>
           {isSnoozed ? (
-            <Stack.Toolbar.MenuAction icon={isIOS ? 'clock.arrow.circlepath' : undefined} onPress={() => unsnooze(ids)}>
+            <Stack.Toolbar.MenuAction icon={isIOS ? 'clock.arrow.circlepath' : undefined} onPress={() => { haptic(); return (() => unsnooze(ids))(); }}>
               Unsnooze
             </Stack.Toolbar.MenuAction>
           ) : (
-            <Stack.Toolbar.MenuAction icon={isIOS ? 'clock' : undefined} onPress={() => router.push({ pathname: '/snooze', params: { ids: thread.id, close: '1' } })}>
+            <Stack.Toolbar.MenuAction icon={isIOS ? 'clock' : undefined} onPress={() => { haptic(); return (() => router.push({ pathname: '/snooze', params: { ids: thread.id, close: '1' } }))(); }}>
               Snooze
             </Stack.Toolbar.MenuAction>
           )}
-          <Stack.Toolbar.MenuAction icon={isIOS ? (thread.important ? 'flag.slash' : 'flag') : undefined} onPress={() => setImportant(ids, !thread.important)}>
+          <Stack.Toolbar.MenuAction icon={isIOS ? (thread.important ? 'flag.slash' : 'flag') : undefined} onPress={() => { haptic(); return (() => setImportant(ids, !thread.important))(); }}>
             {thread.important ? 'Mark not important' : 'Mark important'}
           </Stack.Toolbar.MenuAction>
           {thread.location === 'spam' ? (
-            <Stack.Toolbar.MenuAction icon={isIOS ? 'checkmark.shield' : undefined} onPress={close(moveToInbox)}>
+            <Stack.Toolbar.MenuAction icon={isIOS ? 'checkmark.shield' : undefined} onPress={() => { haptic(); return (close(moveToInbox))(); }}>
               Not spam
             </Stack.Toolbar.MenuAction>
           ) : (
-            <Stack.Toolbar.MenuAction icon={isIOS ? 'exclamationmark.octagon' : undefined} destructive onPress={close(reportSpam)}>
+            <Stack.Toolbar.MenuAction icon={isIOS ? 'exclamationmark.octagon' : undefined} destructive onPress={() => { haptic(); return (close(reportSpam))(); }}>
               Report spam
             </Stack.Toolbar.MenuAction>
           )}
@@ -149,7 +163,7 @@ export default function ThreadScreen() {
           </Text>
           <Pressable
             onPress={() => {
-              Haptics.selectionAsync();
+              haptic();
               setStarred(ids, !thread.starred);
             }}
             hitSlop={12}
@@ -176,10 +190,14 @@ export default function ThreadScreen() {
           </Text>
         ) : null}
 
+        {loading ? <Text style={[styles.loadError, { color: c.secondaryLabel }]} accessibilityLiveRegion="polite">Loading message and attachments…</Text> : null}
+        {!loading && (loadError || thread.messages.some((m) => m.needsParse)) ? <View style={{paddingHorizontal:16}}><Button title="Retry loading message" variant="outline" onPress={()=>void reload()} /></View> : null}
+
         {thread.messages.map((m, i) => (
           <MessageView
             key={m.id}
             message={m}
+            threadId={thread.id}
             me={me}
             expanded={expanded.has(m.id) || i === thread.messages.length - 1}
             onToggle={() =>
@@ -218,12 +236,14 @@ function Tag({ text, color }: { text: string; color: ColorValue }) {
 
 function MessageView({
   message,
+  threadId,
   me,
   expanded,
   onToggle,
   onReply,
 }: {
   message: Message;
+  threadId: string;
   me: string;
   expanded: boolean;
   onToggle: () => void;
@@ -275,15 +295,14 @@ function MessageView({
 
       {expanded ? (
         <>
-          <Text style={[styles.bodyText, { color: c.label }]} selectable>
-            {message.body}
-          </Text>
+          <MessageBody body={message.body} />
+          {message.parseError ? <Text style={{color:c.red,fontSize:14}}>{message.parseError}</Text> : null}
           {message.attachments.length > 0 ? (
             <View style={styles.attachments}>
               {message.attachments.map((a) => (
                 <Pressable
                   key={a.id}
-                  onPress={() => Alert.alert(a.name, 'Opening attachments in the app comes in the next update.')}
+                  onPress={() => router.push({pathname:'/attachment/[id]',params:{id:a.id,threadId}})}
                   style={({ pressed }) => [styles.attachment, { borderColor: c.separator, backgroundColor: pressed ? c.fill : 'transparent' }]}
                   accessibilityRole="button"
                   accessibilityLabel={`Attachment ${a.name}, ${fileSize(a.size)}`}
@@ -344,7 +363,6 @@ const styles = StyleSheet.create({
   date: { fontSize: 13 },
   to: { fontSize: 14, marginTop: 1 },
   details: { borderRadius: 10, padding: 12, gap: 2 },
-  bodyText: { fontSize: 16, lineHeight: 23 },
   attachments: { gap: 8 },
   attachment: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: StyleSheet.hairlineWidth, borderRadius: 12, padding: 12 },
   attachmentName: { fontSize: 15, fontWeight: '500' },

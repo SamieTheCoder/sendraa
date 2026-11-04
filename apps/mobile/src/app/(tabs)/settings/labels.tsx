@@ -1,6 +1,7 @@
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { HapticPressable as Pressable } from '@/components/haptic-pressable';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 
 import { TextBox } from '@/components/form';
 import { Icon } from '@/components/icon';

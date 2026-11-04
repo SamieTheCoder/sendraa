@@ -9,11 +9,15 @@ import { api, sessionInit } from '@/lib/api';
 import { API_URL } from '@/lib/auth-client';
 
 import { applyFromServer, getMail, setRemoteSink } from './store';
-import type { Account, Address, Attachment, Location, Message, Thread } from './types';
+import type { Account, Address, Attachment, Draft, Location, Message, Thread } from './types';
+import { localAttachmentBase64 } from './attachment-content';
+import { parseAddresses } from './format';
+import { htmlToText } from './message-links';
 
-type ServerMailbox = { id: string; address: string; display_name: string; shared: boolean };
+type ServerMailbox = { id: string; address: string; display_name: string; shared: boolean; canSend: boolean };
 
 type ServerThread = {
+  hasSent?: boolean;
   id: string;
   mailboxId: string;
   subject: string;
@@ -39,29 +43,15 @@ type ServerMessage = {
   text: string | null;
   html: string | null;
   needsParse: boolean;
+  parseError?: string;
   attachments: { id: string; name: string; type: string; size: number; inline: boolean }[];
 };
 
 let tenantId: string | null = null;
+let generation = 0;
+export function disconnectMail() { generation++; tenantId=null; setRemoteSink(null); }
 
 const base = (mailboxId: string) => `/v1/tenants/${tenantId}/mailboxes/${mailboxId}`;
-
-/** Plain-text view of an HTML body. Rendering rich HTML belongs to a later phase. */
-function htmlToText(html: string): string {
-  return html
-    .replace(/<(style|script|head)[^>]*>[\s\S]*?<\/\1>/gi, '')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/(p|div|li|tr|h[1-6]|blockquote)>/gi, '\n')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-}
 
 /** A list summary as a thread with one stand-in message, so list rows render before the thread is opened. */
 function summaryToThread(t: ServerThread, existing?: Thread): Thread {
@@ -69,6 +59,7 @@ function summaryToThread(t: ServerThread, existing?: Thread): Thread {
   const keepMessages = existing?.remote?.loaded && existing.messages.length === t.messageCount;
   return {
     id: t.id,
+    hasSent: t.hasSent,
     accountId: t.mailboxId,
     subject: t.subject || '(no subject)',
     messages: keepMessages
@@ -96,9 +87,9 @@ function summaryToThread(t: ServerThread, existing?: Thread): Thread {
 }
 
 function toMessage(m: ServerMessage): Message {
-  const attachments: Attachment[] = m.attachments.filter((a) => !a.inline).map((a) => ({ id: a.id, name: a.name || 'Attachment', size: a.size, type: a.type }));
-  const body = m.text ?? (m.html ? htmlToText(m.html) : m.needsParse ? 'This message is large and is still being processed.' : '');
-  return { id: m.id, from: m.from, to: m.to, cc: m.cc, date: m.date ?? new Date().toISOString(), body, attachments };
+  const attachments: Attachment[] = m.attachments.map((a) => ({ id: a.id, name: a.name || 'Attachment', size: a.size, type: a.type }));
+  const body = m.text ?? (m.html ? htmlToText(m.html) : m.needsParse ? 'This message needs processing before its contents can be displayed.' : '');
+  return { id: m.id, from: m.from, to: m.to, cc: m.cc, date: m.date ?? new Date().toISOString(), body, attachments, needsParse: m.needsParse, parseError: m.parseError };
 }
 
 /**
@@ -106,11 +97,15 @@ function toMessage(m: ServerMessage): Message {
  * mail are replaced; the active mailbox is kept if it still exists.
  */
 export async function connectWorkspace(id: string): Promise<Account[]> {
+  if(tenantId !== id)generation++;
+  const request = generation;
   tenantId = id;
   setRemoteSink(pushChanges);
   const { mailboxes } = await api<{ mailboxes: ServerMailbox[] }>(`/v1/tenants/${id}/mailboxes`);
-  const accounts: Account[] = mailboxes.map((m) => ({ id: m.id, address: m.address, name: m.display_name || m.address, shared: m.shared, live: true }));
-  if (accounts.length === 0) return accounts;
+  if(request !== generation)return [];
+  const accounts: Account[] = mailboxes.map((m) => ({ id: m.id, address: m.address, name: m.display_name || m.address, shared: m.shared, live: true, canSend: m.canSend }));
+  // Keep screens usable for mailbox managers without exposing cached/sample mail.
+  if (!accounts.length) accounts.push({id:'unassigned',address:'No mailbox assigned',name:'No mailbox access',shared:false,live:true,canSend:false,unavailable:true});
   applyFromServer((s) => {
     const ids = new Set(accounts.map((a) => a.id));
     return {
@@ -134,10 +129,12 @@ const LOCATIONS: Location[] = ['inbox', 'archive', 'sent', 'spam', 'trash'];
 /** Fetches every folder of one mailbox and replaces its conversations in the store. */
 export async function refreshMailbox(mailboxId: string): Promise<void> {
   if (!tenantId) return;
+  const request = generation;
   const lists = await Promise.all([
     ...LOCATIONS.map((l) => api<{ threads: ServerThread[] }>(`${base(mailboxId)}/threads?location=${l}&limit=100`)),
     api<{ threads: ServerThread[] }>(`${base(mailboxId)}/threads?view=snoozed&limit=100`),
   ]);
+  if(request !== generation)return;
   const byId = new Map<string, ServerThread>();
   for (const l of lists) for (const t of l.threads) byId.set(t.id, t);
   applyFromServer((s) => {
@@ -148,25 +145,39 @@ export async function refreshMailbox(mailboxId: string): Promise<void> {
 }
 
 /** Loads the full conversation the first time it is opened. */
-export async function loadThread(threadId: string): Promise<void> {
+export async function loadThread(threadId: string, force = false): Promise<void> {
   const t = getMail().threads.find((x) => x.id === threadId);
-  if (!t?.remote || t.remote.loaded) return;
-  const full = await api<ServerThread & { messages: ServerMessage[] }>(`${base(t.accountId)}/threads/${threadId}`);
+  if (!t?.remote || (t.remote.loaded && !force)) return;
+  const workspaceId = t.remote.tenantId;
+  const request = generation;
+  const full = await api<ServerThread & { messages: ServerMessage[] }>(`/v1/tenants/${workspaceId}/mailboxes/${t.accountId}/threads/${threadId}`);
+  if (tenantId !== workspaceId || request !== generation) return;
   applyFromServer((s) => ({
     ...s,
     threads: s.threads.map((x) =>
-      x.id === threadId ? { ...summaryToThread(full, x), messages: full.messages.map(toMessage), remote: { tenantId: tenantId!, loaded: true } } : x,
+      x.id === threadId ? { ...summaryToThread(full, x), messages: full.messages.map((m) => ({ ...toMessage(m), attachments: toMessage(m).attachments.map((a) => ({ ...a, sourceMailboxId: t.accountId })) })), remote: { tenantId: tenantId!, loaded: true } } : x,
     ),
   }));
 }
 
+/** A push can point to a thread outside the currently loaded page. */
+export async function loadNotificationThread(workspaceId:string,mailboxId:string,threadId:string) {
+  const request=generation;
+  const full=await api<ServerThread & {messages:ServerMessage[]}>(`/v1/tenants/${workspaceId}/mailboxes/${mailboxId}/threads/${threadId}`);
+  if(tenantId!==workspaceId || request!==generation)return;
+  applyFromServer((s)=>({...s,threads:[...s.threads.filter((t)=>t.id!==threadId),{
+    ...summaryToThread(full),messages:full.messages.map(toMessage),remote:{tenantId:workspaceId,loaded:true},
+  }]}));
+}
+
 /** Writes local changes back. On failure the next refresh restores the server's view. */
 function pushChanges(threads: Thread[]) {
+  const request=generation;
   for (const t of threads) {
     void api(`${base(t.accountId)}/threads/${t.id}`, {
       method: 'PATCH',
       body: { location: t.location, starred: t.starred, unread: t.unread, important: t.important, labelIds: t.labelIds, snoozedUntil: t.snoozedUntil },
-    }).catch(() => refreshMailbox(t.accountId).catch(() => undefined));
+    }).catch(() => request===generation ? refreshMailbox(t.accountId).catch(() => undefined) : undefined);
   }
 }
 
@@ -180,3 +191,33 @@ export async function attachmentRequest(mailboxId: string, attachmentId: string)
 }
 
 export const isLive = () => tenantId !== null;
+
+export async function sendLiveDraft(draft: Draft) {
+  if (!tenantId) throw new Error('Open your workspace before sending.');
+  const request=generation;
+  const mailbox = getMail().accounts.find((a) => a.id === draft.accountId);
+  if (!mailbox?.live || !mailbox.canSend) throw new Error('You do not have permission to send from this mailbox.');
+  const recipients = (value: string) => {
+    const list = parseAddresses(value);
+    if (list.length !== value.split(/[,;]/).filter((v) => v.trim()).length) throw new Error('One of the recipient addresses is invalid. Check To, Cc and Bcc.');
+    return list;
+  };
+  const to = recipients(draft.to), cc = recipients(draft.cc), bcc = recipients(draft.bcc);
+  if (to.length + cc.length + bcc.length === 0) throw new Error('Add at least one recipient.');
+  const attachments = [];
+  for (const a of draft.attachments) {
+    let content: string;
+    if (a.uri) content = await localAttachmentBase64(a.uri);
+    else {
+      const request = await attachmentRequest(a.sourceMailboxId ?? draft.accountId,a.id);
+      const response = await fetch(request.uri,{ headers:request.headers,credentials:(await sessionInit()).credentials });
+      if (!response.ok) throw new Error(`Could not load ${a.name}. Remove it and attach it again.`);
+      const blob = await response.blob();
+      content = await new Promise<string>((resolve,reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1] ?? ''); reader.onerror = () => reject(new Error(`Could not read ${a.name}.`)); reader.readAsDataURL(blob); });
+    }
+    attachments.push({ name:a.name,type:a.type || 'application/octet-stream',content });
+    if (attachments.reduce((n,a)=>n+a.content.length,0)>25*1024*1024) throw new Error('Attachments exceed the encoded message size limit. Remove some files.');
+  }
+  if(request!==generation)throw new Error('Account changed. Open this draft in its original account to send.');
+  return api<{ id:string; accepted:string[]; rejected:string[]; saved:boolean }>(`${base(draft.accountId)}/send`, { method:'POST',body:{requestKey:draft.sendKey??draft.id,to,cc,bcc,subject:draft.subject,text:draft.body,threadId:draft.mode==='reply'||draft.mode==='replyAll'?draft.threadId:null,attachments} });
+}

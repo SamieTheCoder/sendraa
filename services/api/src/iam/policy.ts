@@ -32,6 +32,13 @@ export async function effectivePermissions(userId: string, resource: ResourceNam
   const roles = await effectiveRoles(userId, resource, db);
   const perms = new Set<Permission>();
   for (const id of roles) for (const p of getRole(id)?.permissions ?? []) perms.add(p);
+  if (resource.kind === 'mailbox') {
+    const mailbox = await one<{ shared: boolean; owner_user_id: string | null; deleting_at: Date | null }>('select shared,owner_user_id,deleting_at from mailbox where id=$1 and tenant_id=$2', [resource.mailboxId, resource.tenantId], db);
+    // Management roles never confer access to another person's messages.
+    if (!mailbox || mailbox.deleting_at || (!mailbox.shared && mailbox.owner_user_id !== userId)) {
+      for (const p of [...perms]) if (p.startsWith('mail.')) perms.delete(p);
+    }
+  }
   return perms;
 }
 
@@ -86,6 +93,11 @@ export async function assertCanGrantRole(db: Queryable, callerId: string, resour
 
   const role = getRole(roleId);
   if (!role) throw new IamError(400, 'UNKNOWN_ROLE', `There is no role called ${roleId}.`);
+  if (resource.kind === 'mailbox' && role.permissions.some((p) => p.startsWith('mail.'))) {
+    const mailbox = await one<{ shared: boolean; owner_user_id: string | null; deleting_at: Date | null }>('select shared,owner_user_id,deleting_at from mailbox where id=$1 and tenant_id=$2 for update', [resource.mailboxId, resource.tenantId], db);
+    if (mailbox?.deleting_at) throw new IamError(409, 'MAILBOX_DELETING', 'This mailbox is being deleted.');
+    if (mailbox && !mailbox.shared && mailbox.owner_user_id) throw new IamError(403, 'PERSONAL_MAILBOX', 'Personal mail belongs only to its assigned user. Use a shared mailbox to delegate access.');
+  }
   if (!role.grantableOn.includes(resource.kind)) {
     throw new IamError(400, 'ROLE_NOT_GRANTABLE', `${role.title} can only be granted on a ${role.grantableOn.join(' or ')}.`);
   }

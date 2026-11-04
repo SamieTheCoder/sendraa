@@ -1,6 +1,6 @@
 export type Address = { name: string; address: string };
 
-export type Attachment = { id: string; name: string; size: number; type: string };
+export type Attachment = { id: string; name: string; size: number; type: string; uri?: string; sourceMailboxId?: string };
 
 export type Message = {
   id: string;
@@ -10,6 +10,8 @@ export type Message = {
   /** ISO timestamp. */
   date: string;
   body: string;
+  needsParse?: boolean;
+  parseError?: string;
   attachments: Attachment[];
 };
 
@@ -17,6 +19,7 @@ export type Message = {
 export type Location = 'inbox' | 'archive' | 'sent' | 'scheduled' | 'spam' | 'trash';
 
 export type Thread = {
+  hasSent?: boolean;
   id: string;
   accountId: string;
   subject: string;
@@ -45,6 +48,8 @@ export type Account = {
   shared: boolean;
   /** Real mailbox in the workspace (id is the mailbox id), as opposed to sample data. */
   live?: boolean;
+  canSend?: boolean;
+  unavailable?: boolean;
 };
 
 export type Label = { id: string; name: string; color: string };
@@ -52,6 +57,8 @@ export type Label = { id: string; name: string; color: string };
 export type DraftMode = 'new' | 'reply' | 'replyAll' | 'forward';
 
 export type Draft = {
+  sendKey?: string;
+  sendPending?: boolean;
   id: string;
   accountId: string;
   to: string;
@@ -92,6 +99,8 @@ export type Settings = {
   defaultReply: 'reply' | 'replyAll';
   showAvatars: boolean;
   notifications: 'all' | 'important' | 'none';
+  copyOtp: boolean;
+  haptics: boolean;
 };
 
 /** System folders the user can open. Starred, snoozed, important, drafts and all are views. */

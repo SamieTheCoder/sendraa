@@ -1,3 +1,4 @@
+import { haptic } from '@/lib/haptics';
 import { NativeTabs } from 'expo-router/native-tabs';
 import { Tabs } from 'expo-router';
 import { Platform } from 'react-native';
@@ -17,7 +18,7 @@ export default function TabLayout() {
 
   if (Platform.OS === 'android') {
     return (
-      <Tabs screenOptions={{
+      <Tabs screenListeners={{tabPress:()=>haptic()}} screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: c.tint as string,
         tabBarInactiveTintColor: c.secondaryLabel as string,
@@ -36,7 +37,7 @@ export default function TabLayout() {
   }
 
   return (
-    <NativeTabs tintColor={c.tint} minimizeBehavior="onScrollDown">
+    <NativeTabs screenListeners={{tabPress:()=>haptic()}} tintColor={c.tint} minimizeBehavior="onScrollDown">
       <NativeTabs.Trigger name="mail">
         <NativeTabs.Trigger.Label>Mail</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf={{ default: 'envelope', selected: 'envelope.fill' }} md="mail" />

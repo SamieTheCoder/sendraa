@@ -20,6 +20,12 @@ cleanup() {
 }
 trap cleanup INT TERM EXIT
 
+# Never mistake a previous API process for the one this command starts.
+if lsof -nP -iTCP:8787 -sTCP:LISTEN >/dev/null 2>&1; then
+  echo "Port 8787 already has an API running. Stop that Sendraa API process, then rerun pnpm dev so it loads the current code."
+  exit 1
+fi
+
 # 1. Docker and Postgres (db:up opens Docker Desktop if needed and waits until Postgres is healthy)
 (cd "$API" && pnpm -s db:up)
 echo "Postgres up."
@@ -28,7 +34,7 @@ echo "Migrations applied."
 
 # 2. Tunnel and API (logs in .dev-logs/)
 (cd "$API" && pnpm -s tunnel >"$LOGS/tunnel.log" 2>&1) & pids+=$!
-(cd "$API" && pnpm -s start >"$LOGS/api.log" 2>&1) & pids+=$!
+(cd "$API" && pnpm -s dev >"$LOGS/api.log" 2>&1) & pids+=$!
 
 for i in {1..30}; do curl -sf -m 3 http://localhost:8787/health >/dev/null && break; sleep 1; done
 curl -sf -m 3 http://localhost:8787/health >/dev/null && echo "API up:    http://localhost:8787" || { echo "API failed, see $LOGS/api.log"; exit 1; }

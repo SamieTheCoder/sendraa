@@ -71,7 +71,7 @@ const run: Record<StepId, (ctx: Ctx) => Promise<Record<string, unknown>>> = {
   async schema({ cf, accountId, tenant, artifact }) {
     // Migrations use IF NOT EXISTS, so re-running them is harmless.
     for (const m of artifact.migrations) await cf.queryD1(accountId, tenant.d1_database_id!, m.sql);
-    return { applied: artifact.migrations.map((m) => m.name) };
+    return { applied: artifact.migrations.map((m) => m.name), version: artifact.version };
   },
 
   async storage({ cf, accountId, tenant }) {
@@ -168,21 +168,28 @@ const run: Record<StepId, (ctx: Ctx) => Promise<Record<string, unknown>>> = {
     let mailbox = await one<{ id: string }>('select id from mailbox where address = $1', [address]);
     if (!mailbox) {
       mailbox = await one<{ id: string }>(
-        `insert into mailbox (tenant_id, domain_id, address, display_name) values ($1, $2, $3, 'Admin') returning id`,
-        [tenant.id, domain.id, address],
+        `insert into mailbox (tenant_id, domain_id, address, display_name, owner_user_id) values ($1, $2, $3, 'Admin', $4) returning id`,
+        [tenant.id, domain.id, address, tenant.cloudflare_user_id],
       );
     }
     await workerCall(tenant, 'PUT', `/v1/mailboxes/${mailbox!.id}`, { address, displayName: 'Admin' });
+    await pool.query('update mailbox set synced_at=now() where id=$1', [mailbox!.id]);
     // The owner already reaches every mailbox through the tenant binding; this makes admin@ theirs explicitly.
     await grant(pool, tenant.id, mailboxResource(tenant.id, mailbox!.id), 'roles/mailUser', tenant.cloudflare_user_id, tenant.cloudflare_user_id);
     await query('insert into login_alias(address, user_id, mailbox_id) values ($1, $2, $3) on conflict do nothing', [address, tenant.cloudflare_user_id, mailbox!.id]);
     return { mailboxId: mailbox!.id, address };
   },
 
-  async check({ tenant }) {
-    const health = (await workerCall(tenant, 'GET', '/v1/health')) as { ok?: boolean; version?: string };
-    if (!health.ok) throw new SetupError('The mail Worker did not answer its health check.');
-    return { version: health.version };
+  async check({ tenant, artifact }) {
+    // A successful HTTP response can still come from the previous deployment.
+    for (let attempt = 0; attempt < 6; attempt++) {
+      if (attempt) await new Promise((resolve) => setTimeout(resolve, 2_000));
+      const health = (await workerCall(tenant, 'GET', '/v1/health')) as { ok?: boolean; version?: string; capabilities?: string[] };
+      if (health.ok && health.version === artifact.version.split('+')[0] && health.capabilities?.includes('outbound')) {
+        return { version: artifact.version };
+      }
+    }
+    throw new SetupError('The updated mail Worker is not ready for sending yet. Retry Email setup in a moment.');
   },
 };
 
@@ -218,13 +225,16 @@ export async function claimSetup(tenantId: string): Promise<boolean> {
 }
 
 /** Runs every unfinished step in order. Never throws; the outcome is stored on the tenant. */
-export async function provision(tenantId: string, domainId: string, actorId: string): Promise<void> {
+export async function provision(tenantId: string, domainId: string, actorId: string, options: { workerOnly?: boolean } = {}): Promise<void> {
   let current: StepId | null = null;
   try {
     const tenant = await one<Tenant>('select * from tenant where id = $1', [tenantId]);
     const domain = await one<Domain>('select id, name::text as name, zone_id from domain where id = $1 and tenant_id = $2', [domainId, tenantId]);
     if (!tenant?.cloudflare_account_id || !tenant.cloudflare_user_id) throw new SetupError('This workspace is not linked to a Cloudflare account.');
     if (!domain?.zone_id) throw new SetupError('This domain is not a Cloudflare zone.');
+    if (options.workerOnly && (!tenant.d1_database_id || !tenant.worker_url || !tenant.worker_secret_enc)) {
+      throw new SetupError('Finish Email setup before updating an existing mail Worker.');
+    }
 
     const ctx: Ctx = {
       tenant,
@@ -236,15 +246,16 @@ export async function provision(tenantId: string, domainId: string, actorId: str
 
     const done = new Set(
       (await query<{ step: string; detail: { version?: string } }>(`select step, detail from provision_step where tenant_id = $1 and status = 'done'`, [tenantId]))
-        // A newer Worker build means the Worker step must run again.
-        .filter((s) => s.step !== 'worker' || s.detail.version === ctx.artifact.version)
+        // Schema and deployment must move together; legacy schema steps have no version.
+        .filter((s) => !['schema', 'worker'].includes(s.step) || s.detail.version === ctx.artifact.version)
         .map((s) => s.step),
     );
 
     for (const step of STEPS) {
+      if (options.workerOnly && !['schema', 'worker', 'check'].includes(step.id)) continue;
       // Domain steps must run for each domain; the account steps only once.
       const perDomain = step.id === 'routing' || step.id === 'dmarc' || step.id === 'catch_all' || step.id === 'mailbox';
-      if (done.has(step.id) && !perDomain) continue;
+      if (done.has(step.id) && !perDomain && step.id !== 'check' && !options.workerOnly) continue;
       current = step.id;
       await setStep(tenantId, step.id, 'running');
       const detail = await run[step.id](ctx);
@@ -258,7 +269,16 @@ export async function provision(tenantId: string, domainId: string, actorId: str
     const message = describe(err);
     console.error(JSON.stringify({ message: 'setup failed', tenantId, step: current, error: err instanceof Error ? err.message : String(err) }));
     if (current) await setStep(tenantId, current, 'failed', {}, message).catch(() => undefined);
-    await pool.query(`update tenant set setup_status = 'failed', setup_error = $2 where id = $1`, [tenantId, message]).catch(() => undefined);
+    // A failed upgrade must not disable an otherwise healthy existing inbox.
+    let status = 'failed';
+    if (options.workerOnly) {
+      const existing = await one<Tenant>('select * from tenant where id=$1', [tenantId]);
+      if (existing) {
+        const health = await workerFetch(existing, 'GET', '/v1/health').then(async (response) => response.ok ? response.json() as Promise<{ ok?: boolean }> : null).catch(() => null);
+        if (health?.ok) status = 'ready';
+      }
+    }
+    await pool.query('update tenant set setup_status = $3, setup_error = $2 where id = $1', [tenantId, message, status]).catch(() => undefined);
     await audit(pool, { tenantId, actorId, action: 'setup.fail', metadata: { step: current, error: message } }).catch(() => undefined);
   }
 }

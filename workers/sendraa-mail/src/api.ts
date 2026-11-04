@@ -1,4 +1,7 @@
 import { safeEqual } from './util';
+import { putOutboundObject, storeOutbound } from './outbound';
+import { deleteMailbox } from './delete-mailbox';
+import { storeParsedMessage } from './parsed-message';
 
 declare const __WORKER_VERSION__: string;
 
@@ -36,10 +39,16 @@ export async function handleApi(request: Request, env: Env): Promise<Response> {
   const method = request.method;
 
   try {
-    if (method === 'GET' && path === '/v1/health') return json({ ok: true, version: __WORKER_VERSION__ });
+    if (method === 'GET' && path === '/v1/health') return json({ ok: true, version: __WORKER_VERSION__, capabilities: ['outbound', 'mailbox-delete', 'parsed-message'] });
+
+    const outbound = /^\/v1\/mailboxes\/([\w-]{1,64})\/outbound\/([\w-]{1,64})(?:\/(raw|att-\d{1,2}))?$/.exec(path);
+    if (outbound && method === 'PUT') return outbound[3]
+      ? await putOutboundObject(request, env, outbound[1]!, outbound[2]!, outbound[3])
+      : await storeOutbound(await readJson(request, 6 * 1024 * 1024), env, outbound[1]!, outbound[2]!);
 
     let m = /^\/v1\/mailboxes\/([\w-]{1,64})$/.exec(path);
     if (m && method === 'PUT') return await putMailbox(env, m[1]!, request);
+    if (m && method === 'DELETE') return await deleteMailbox(env, m[1]!);
 
     m = /^\/v1\/mailboxes\/([\w-]{1,64})\/threads$/.exec(path);
     if (m && method === 'GET') return await listThreads(env, m[1]!, url.searchParams);
@@ -54,6 +63,9 @@ export async function handleApi(request: Request, env: Env): Promise<Response> {
     if (m && method === 'GET') {
       return await streamObject(env, "select raw_key as k, 'message/rfc822' as t from messages where id = ? and mailbox_id = ?", m[2]!, m[1]!);
     }
+
+    m = /^\/v1\/mailboxes\/([\w-]{1,64})\/messages\/([\w-]{1,64})\/parsed$/.exec(path);
+    if(m && method==='PUT') return await storeParsedMessage(env,m[1]!,m[2]!,await readJson(request,2*1024*1024));
 
     m = /^\/v1\/mailboxes\/([\w-]{1,64})\/attachments\/([\w-]{1,64})$/.exec(path);
     if (m && method === 'GET') {
@@ -72,29 +84,43 @@ export async function handleApi(request: Request, env: Env): Promise<Response> {
   }
 }
 
-async function readJson(request: Request): Promise<Record<string, unknown>> {
+async function readJson(request: Request, maxBytes = 64 * 1024): Promise<Record<string, unknown>> {
   const length = Number(request.headers.get('content-length') ?? 0);
-  if (length > 64 * 1024) throw new HttpError(413, 'TOO_LARGE', 'Body too large.');
-  const body = await request.json().catch(() => null);
+  if (length > maxBytes) throw new HttpError(413, 'TOO_LARGE', 'Body too large.');
+  const reader = request.body?.getReader(); let size = 0; const chunks: Uint8Array[] = [];
+  if (reader) while (true) {
+    const next = await reader.read(); if (next.done) break;
+    size += next.value.length;
+    if (size > maxBytes) { await reader.cancel(); throw new HttpError(413, 'TOO_LARGE', 'Body too large.'); }
+    chunks.push(next.value);
+  }
+  const bytes = new Uint8Array(size); let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
+  let body: unknown = null;
+  try { body = JSON.parse(new TextDecoder().decode(bytes)); } catch { /* invalid JSON below */ }
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw new HttpError(400, 'INVALID_JSON', 'Expected a JSON object.');
   return body as Record<string, unknown>;
 }
 
 async function putMailbox(env: Env, id: string, request: Request) {
+  if (await env.DB.prepare('select 1 from mailbox_deletions where mailbox_id=?').bind(id).first()) throw new HttpError(409,'MAILBOX_DELETED','This mailbox was deleted.');
   const body = await readJson(request);
   const address = typeof body.address === 'string' ? body.address.trim().toLowerCase() : '';
   const displayName = typeof body.displayName === 'string' ? body.displayName.slice(0, 80) : '';
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) throw new HttpError(400, 'INVALID_ARGUMENT', 'address must be an email address.');
-  await env.DB.prepare(
-    `insert into mailboxes (id, address, display_name, created_at) values (?, ?, ?, ?)
+  const saved = await env.DB.prepare(
+    `insert into mailboxes (id, address, display_name, created_at)
+     select ?, ?, ?, ? where not exists(select 1 from mailbox_deletions where mailbox_id=?)
      on conflict(id) do update set address = excluded.address, display_name = excluded.display_name`,
   )
-    .bind(id, address, displayName, Date.now())
+    .bind(id, address, displayName, Date.now(), id)
     .run();
+  if (!saved.meta.changes) throw new HttpError(409,'MAILBOX_DELETED','This mailbox was deleted.');
   return json({ id, address, displayName });
 }
 
 type ThreadRow = {
+  has_sent?: number;
   id: string;
   mailbox_id: string;
   subject: string;
@@ -116,6 +142,7 @@ const iso = (ms: number | null) => (ms == null ? null : new Date(ms).toISOString
 function threadJson(t: ThreadRow) {
   return {
     id: t.id,
+    hasSent: t.has_sent === 1,
     mailboxId: t.mailbox_id,
     subject: t.subject,
     snippet: t.snippet,
@@ -150,8 +177,10 @@ async function listThreads(env: Env, mailboxId: string, q: URLSearchParams) {
   } else {
     const location = (q.get('location') ?? 'inbox') as Location;
     if (!LOCATIONS.includes(location)) throw new HttpError(400, 'INVALID_ARGUMENT', 'Unknown location.');
-    where.push('location = ?', '(snoozed_until is null or snoozed_until <= ?)');
-    params.push(location, now);
+    // Sent is a view as well: replies remain in their current conversation folder.
+    where.push(location === 'sent' ? "exists (select 1 from messages m where m.thread_id=threads.id and m.direction='out') and location not in ('trash','spam')" : 'location = ?', '(snoozed_until is null or snoozed_until <= ?)');
+    if (location !== 'sent') params.push(location);
+    params.push(now);
   }
 
   const label = q.get('label');
@@ -166,7 +195,7 @@ async function listThreads(env: Env, mailboxId: string, q: URLSearchParams) {
   }
   const limit = Math.min(Math.max(Number(q.get('limit')) || 50, 1), 100);
 
-  const { results } = await env.DB.prepare(`select * from threads where ${where.join(' and ')} order by last_message_at desc limit ?`)
+  const { results } = await env.DB.prepare(`select *, exists(select 1 from messages m where m.thread_id=threads.id and m.direction='out') as has_sent from threads where ${where.join(' and ')} order by last_message_at desc limit ?`)
     .bind(...params, limit)
     .all<ThreadRow>();
   const threads = results.map(threadJson);
@@ -195,7 +224,7 @@ type AttachmentRow = { id: string; message_id: string; filename: string; content
 
 async function getThread(env: Env, mailboxId: string, id: string) {
   const [thread, messages, attachments] = await env.DB.batch([
-    env.DB.prepare('select * from threads where id = ? and mailbox_id = ?').bind(id, mailboxId),
+    env.DB.prepare("select *, exists(select 1 from messages m where m.thread_id=threads.id and m.direction='out') as has_sent from threads where id = ? and mailbox_id = ?").bind(id, mailboxId),
     env.DB.prepare(
       `select id, message_id, in_reply_to, refs, from_addr, to_addrs, cc_addrs, reply_to, subject, text_body, html_body, sent_at, needs_parse, direction
          from messages where thread_id = ? order by sent_at`,

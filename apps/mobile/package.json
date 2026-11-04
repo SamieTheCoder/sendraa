@@ -11,7 +11,11 @@
     "expo": "~58.0.22",
     "expo-clipboard": "~58.0.4",
     "expo-constants": "~58.0.14",
+    "expo-crypto": "~58.0.7",
+    "expo-dev-client": "~58.0.18",
+    "expo-device": "~58.0.5",
     "expo-document-picker": "~58.0.4",
+    "expo-file-system": "~58.0.13",
     "expo-font": "~58.0.11",
     "expo-glass-effect": "~58.0.5",
     "expo-haptics": "~58.0.7",
@@ -19,6 +23,7 @@
     "expo-linear-gradient": "~58.0.3",
     "expo-linking": "~58.0.15",
     "expo-network": "~58.0.4",
+    "expo-notifications": "~58.1.7",
     "expo-router": "~58.0.29",
     "expo-secure-store": "~58.0.2",
     "expo-splash-screen": "~58.0.12",
@@ -49,7 +54,12 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "start:dev": "expo start --dev-client",
+    "build:production": "npx eas-cli@latest build --platform all --profile production",
+    "test:message-links": "node --test scripts/message-links.test.mjs",
+    "test:accounts": "node scripts/account-isolation.test.mjs",
+    "test:notifications": "node scripts/notifications.test.mjs"
   },
   "private": true
 }

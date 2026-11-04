@@ -1,7 +1,8 @@
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { HapticPressable as Pressable } from '@/components/haptic-pressable';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { TextBox } from '@/components/form';
 import { Icon } from '@/components/icon';

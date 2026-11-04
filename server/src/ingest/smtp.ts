@@ -44,7 +44,7 @@ export function createSmtpServer(): SMTPServer {
     );
   }
 
-  return new SMTPServer({
+  const server = new SMTPServer({
     name: env.SMTP_HOSTNAME,
     banner: env.SMTP_BANNER,
     size: env.MAX_MESSAGE_BYTES,
@@ -79,7 +79,7 @@ export function createSmtpServer(): SMTPServer {
             );
           }
 
-          if (await isBlocked(resolved.mailboxId, session.envelope.mailFrom?.address || '')) {
+          if (await isBlocked(resolved.mailboxId, session.envelope.mailFrom ? session.envelope.mailFrom.address : '')) {
             await recordFailure(address.address, session, 'sender blocked');
             return callback(
               Object.assign(new Error('550 Sender blocked by recipient'), {
@@ -134,7 +134,7 @@ export function createSmtpServer(): SMTPServer {
 
             const raw = Buffer.concat(chunks);
             const state = stateFor(session);
-            const envelopeFrom = session.envelope.mailFrom?.address || '';
+            const envelopeFrom = session.envelope.mailFrom ? session.envelope.mailFrom.address : '';
 
             try {
               let stored = 0;
@@ -179,10 +179,9 @@ export function createSmtpServer(): SMTPServer {
       })();
     },
 
-    onError(err) {
-      logger.error({ err }, 'smtp server error');
-    },
   });
+  server.on('error', (err) => logger.error({ err }, 'smtp server error'));
+  return server;
 }
 
 async function recordFailure(
@@ -194,7 +193,7 @@ async function recordFailure(
     await sql`
       insert into ingest_failures (envelope_from, envelope_to, client_ip, reason)
       values (
-        ${session.envelope.mailFrom?.address || null},
+        ${session.envelope.mailFrom ? session.envelope.mailFrom.address : null},
         ${rcpt},
         ${session.remoteAddress || null},
         ${reason}

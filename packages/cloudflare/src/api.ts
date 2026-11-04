@@ -218,6 +218,7 @@ export class CloudflareApi {
     const isForm = body instanceof FormData;
     const res = await fetch(`${API_BASE}${path}`, {
       method,
+      signal: AbortSignal.timeout(45_000),
       headers: {
         authorization: `Bearer ${this.accessToken}`,
         // FormData sets its own multipart boundary.

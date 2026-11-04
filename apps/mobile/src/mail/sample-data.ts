@@ -253,5 +253,7 @@ export function defaultSettings(): Settings {
     defaultReply: 'reply',
     showAvatars: true,
     notifications: 'all',
+    copyOtp: true,
+    haptics: true,
   };
 }

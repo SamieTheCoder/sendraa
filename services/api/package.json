@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch --env-file=.env src/index.ts",
+    "dev": "pnpm --filter @sendraa/mail-worker build && tsx watch --env-file=.env src/index.ts",
     "start": "pnpm --filter @sendraa/mail-worker build && tsx --env-file=.env src/index.ts",
     "migrate": "tsx --env-file=.env src/migrate.ts",
     "smoke": "tsx --env-file=.env scripts/smoke.ts",
@@ -14,7 +14,12 @@
     "db:up": "sh scripts/db-up.sh",
     "db:down": "docker compose -f docker-compose.dev.yml down",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test:security": "tsx --env-file=.env scripts/security-test.ts"
+    "test:security": "tsx --env-file=.env scripts/security-test.ts",
+    "test:sending": "tsx --env-file=.env scripts/sending-test.ts",
+    "test:notifications": "tsx --env-file=.env scripts/invitations-push-test.ts",
+    "test:provision": "tsx --env-file=.env scripts/provision-test.ts",
+    "test:parsing": "tsx --env-file=.env scripts/parse-mail-test.ts",
+    "test:accounts": "tsx --env-file=.env scripts/multi-session-test.ts"
   },
   "dependencies": {
     "@better-auth/expo": "1.7.14",
@@ -26,6 +31,7 @@
     "hono": "4.13.16",
     "nodemailer": "10.3.1",
     "pg": "8.23.1",
+    "postal-mime": "4.2.0",
     "zod": "4.6.7"
   },
   "devDependencies": {

@@ -31,6 +31,7 @@ function isSnoozed(t: Thread, now: number) {
 }
 
 function sentByMe(state: MailState, t: Thread) {
+  if (t.hasSent) return true;
   const mine = state.accounts.find((a) => a.id === t.accountId)?.address.toLowerCase();
   return t.messages.some((m) => m.from.address.toLowerCase() === mine);
 }

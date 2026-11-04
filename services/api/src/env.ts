@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { androidFingerprints } from './android-association.js';
 
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
@@ -11,6 +12,7 @@ const schema = z.object({
   CLOUDFLARE_CLIENT_ID: z.string().optional(),
   CLOUDFLARE_CLIENT_SECRET: z.string().optional(),
   APP_SCHEME: z.string().default('sendraa'),
+  EXPO_ACCESS_TOKEN: z.string().optional(),
   SMTP_HOST: z.string().default('smtp.gmail.com'),
   SMTP_PORT: z.coerce.number().int().default(465),
   SMTP_USER: z.string().optional(),
@@ -46,6 +48,7 @@ if (!parsed.success) {
 }
 
 export const env = parsed.data;
+export const androidSigningFingerprints = androidFingerprints(env.ANDROID_SHA256_FINGERPRINTS);
 export const isDev = env.NODE_ENV !== 'production';
 if (parsed.data.NODE_ENV === 'production' && parsed.data.ALLOW_DEV_ADMIN_SIGNUP === 'true') {
   throw new Error('ALLOW_DEV_ADMIN_SIGNUP must not be enabled in production.');

@@ -24,7 +24,7 @@ export async function sessionInit(): Promise<{ headers: Record<string, string>; 
 }
 
 /** Calls the control-plane API with the stored session cookie. */
-export async function api<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
+export async function api<T>(path: string, init: { method?: string; body?: unknown; signal?: AbortSignal } = {}): Promise<T> {
   let res: Response;
   try {
     const session = await sessionInit();
@@ -33,8 +33,10 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
       headers: { 'content-type': 'application/json', ...session.headers },
       credentials: session.credentials,
       body: init.body === undefined ? undefined : JSON.stringify(init.body),
+      signal: init.signal,
     });
   } catch {
+    if (init.signal?.aborted) throw new ApiError(0, 'TIMEOUT', 'The request timed out. Try again to check or save your settings.');
     throw new ApiError(0, 'OFFLINE', `Cannot reach Sendraa at ${API_URL}. Check your connection.`);
   }
 
